@@ -1,0 +1,15 @@
+# Supabase secrets (real keys should never be committed)
+config.js
+
+# Runtime / logs
+server.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*.log
+
+# Node
+node_modules/
+.next/
+out/

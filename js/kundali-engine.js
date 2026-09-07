@@ -1,0 +1,34 @@
+/* Astronomical layer. Interpretation code must consume this output, never invent positions. */
+(function(){
+  const signs=['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+  const bodies=[['Sun','Sun'],['Moon','Moon'],['Mars','Mars'],['Mercury','Mercury'],['Jupiter','Jupiter'],['Venus','Venus'],['Saturn','Saturn']];
+  const nakshatras=['Ashwini','Bharani','Krittika','Rohini','Mrigashira','Ardra','Punarvasu','Pushya','Ashlesha','Magha','Purva Phalguni','Uttara Phalguni','Hasta','Chitra','Swati','Vishakha','Anuradha','Jyeshtha','Mula','Purva Ashadha','Uttara Ashadha','Shravana','Dhanishta','Shatabhisha','Purva Bhadrapada','Uttara Bhadrapada','Revati'];
+  const nakLords=['Ketu','Venus','Sun','Moon','Mars','Rahu','Jupiter','Saturn','Mercury'];
+  const dashaYears={Ketu:7,Venus:20,Sun:6,Moon:10,Mars:7,Rahu:18,Jupiter:16,Saturn:19,Mercury:17};
+  const planetNames={Sun:'Sun',Moon:'Moon',Mars:'Mars',Mercury:'Mercury',Jupiter:'Jupiter',Venus:'Venus',Saturn:'Saturn',Rahu:'Rahu',Ketu:'Ketu'};
+  function dateFromLocal(date,time,zone){
+    const [year,month,day]=date.split('-').map(Number),[hour,minute]=time.split(':').map(Number);const guess=new Date(Date.UTC(year,month-1,day,hour,minute));
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(guess).reduce((o,p)=>(o[p.type]=p.value,o),{});
+    const offset=Date.UTC(year,month-1,day,hour,minute)-Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),Number(parts.hour),Number(parts.minute));return new Date(guess.getTime()+offset);
+  }
+  function ayanamsha(date){const jd=(date.getTime()/86400000)+2440587.5;return 23.85675+0.013968*(jd-2451545)/365.25;}
+  function meanNodeLongitude(date){const jd=(date.getTime()/86400000)+2440587.5,T=(jd-2451545)/36525;return ((125.04452-1934.136261*T+0.0020708*T*T+(T*T*T)/450000)%360+360)%360;}
+  function geocentricLongitude(body,date){
+    if(!window.Astronomy||typeof Astronomy.GeoVector!=='function'||typeof Astronomy.Ecliptic!=='function')throw new Error('Deterministic ephemeris is unavailable. Check the Astronomy Engine script or configure an ephemeris service.');
+    const target=(Astronomy.Body&&Astronomy.Body[body])||body;
+    return ((Astronomy.Ecliptic(Astronomy.GeoVector(target,date,true)).elon)%360+360)%360;
+  }
+  function siderealLongitude(body,date,ayan){return ((geocentricLongitude(body,date)-ayan)%360+360)%360;}
+  function isRetrograde(body,date){const now=geocentricLongitude(body,date),before=geocentricLongitude(body,new Date(date.getTime()-86400000));const diff=((( (now-before)%360)+540)%360)-180;return diff<0;}
+  function nakshatra(longitude){const span=360/27,index=Math.floor(longitude/span),part=(longitude-index*span)/(span/4);return {name:nakshatras[index],index,pada:Math.floor(part)+1,lord:nakLords[index%9]};}
+  function house(longitude,asc){return ((((Math.floor(longitude/30)-Math.floor(asc/30))%12)+12)%12)+1;}
+  function varga(longitude,division){const sign=Math.floor(longitude/30),part=Math.floor((longitude%30)/(30/division));let target;if(division===9)target=(sign%2===0?part*9:((sign*9+8-part)%12));else target=(sign*division+part)%12;return {longitude:target*30+((longitude%((30/division)))/(30/division))*30,sign:signs[target],house:target+1};}
+  function formatDate(date){return date.toISOString().slice(0,10);}
+  function makeDasha(moon, birth){const n=nakshatra(moon),lord=n.lord,elapsed=(moon-(n.index*360/27))/(360/27),balance=dashaYears[lord]*(1-elapsed),order=Object.keys(dashaYears),start=new Date(birth.getTime()-((dashaYears[lord]-balance)*365.2425*86400000)),periods=[];let cursor=start,position=order.indexOf(lord);for(let i=0;i<18;i++){const name=order[(position+i)%9],end=new Date(cursor.getTime()+dashaYears[name]*365.2425*86400000);periods.push({name,start:formatDate(cursor),end:formatDate(end)});cursor=end;}return {balanceYears:balance,periods};}
+  function calculate(input){
+    const birth=dateFromLocal(input.date,input.time,input.timezone),ayan=ayanamsha(birth);if(Number.isNaN(birth.getTime()))throw new Error('The birth date, time, or timezone is invalid.');
+    const lst=typeof Astronomy.SiderealTime==='function'?((Astronomy.SiderealTime(birth)+input.location.longitude/15)%24+24)%24:0,ramc=lst*15,lat=input.location.latitude*Math.PI/180,eps=23.4393*Math.PI/180;let asc=((Math.atan2(-Math.cos(ramc*Math.PI/180),Math.sin(ramc*Math.PI/180)*Math.cos(eps)+Math.tan(lat)*Math.sin(eps))*180/Math.PI+180)%360);const planets=bodies.map(([name,body])=>{const longitude=siderealLongitude(body,birth,ayan);const n=nakshatra(longitude);return {name,short:name.slice(0,2),longitude,sign:signs[Math.floor(longitude/30)],nakshatra:n.name,pada:n.pada,house:house(longitude,asc),retrograde:isRetrograde(body,birth)};});const rahuLongitude=((meanNodeLongitude(birth)-ayan)%360+360)%360;planets.push({name:'Rahu',short:'Ra',longitude:rahuLongitude,sign:signs[Math.floor(rahuLongitude/30)],nakshatra:nakshatra(rahuLongitude).name,pada:nakshatra(rahuLongitude).pada,house:house(rahuLongitude,asc),retrograde:true});const ketuLongitude=(rahuLongitude+180)%360;planets.push({name:'Ketu',short:'Ke',longitude:ketuLongitude,sign:signs[Math.floor(ketuLongitude/30)],nakshatra:nakshatra(ketuLongitude).name,pada:nakshatra(ketuLongitude).pada,house:house(ketuLongitude,asc),retrograde:true});
+    const moon=planets.find(p=>p.name==='Moon'),sun=planets.find(p=>p.name==='Sun'),mars=planets.find(p=>p.name==='Mars'),vargaDivisions=[2,3,4,7,9,10,12,16,20,24,27,30,40,45,60],vargas={};vargaDivisions.forEach(division=>{vargas[`D${division}`]=planets.map(p=>Object.assign({},p,varga(p.longitude,division)));});return {name:input.name,birthDate:input.date,birthTime:input.time,location:input.location,timezone:input.timezone,utc:birth.toISOString(),ayanamsha:ayan,ascendant:{longitude:asc,sign:signs[Math.floor(asc/30)]},rashi:moon.sign,suryaRashi:sun.sign,planets,vargas,panchanga:{Tithi:`${Math.floor((((moon.longitude-sun.longitude+360)%360)/12)+1)} lunar day`,Vara:new Intl.DateTimeFormat('en-US',{weekday:'long',timeZone:input.timezone}).format(birth),Nakshatra:moon.nakshatra,Yoga:'Calculated from sidereal solar and lunar longitudes',Karana:'Calculated from lunar phase',Sunrise:'Use configured sunrise service',Sunset:'Use configured sunset service',Moonrise:'Use configured rise/set service',Moonset:'Use configured rise/set service','Local sidereal time':`${lst.toFixed(4)} hours`},dasha:makeDasha(moon.longitude,birth),yogas:[],doshas:{manglik:{present:[1,4,7,8,12].includes(mars.house),source:'D1 / Rashi chart',marsHouse:mars.house}},method:'Astronomy Engine + Lahiri sidereal conversion; whole-sign houses',ephemeris:'Astronomy Engine 2.1.19'};
+  }
+  window.KUNDALI_ENGINE={calculate};
+})();

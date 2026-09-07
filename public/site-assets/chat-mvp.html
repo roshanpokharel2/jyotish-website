@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Consultation Chat MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <style>
+      :root {
+        --navy: #12203f;
+        --navy-deep: #0b1730;
+        --gold: #b8892b;
+        --gold-light: #d9b866;
+        --cream: #f6efe0;
+        --ivory: #fffdf8;
+        --maroon: #7a2331;
+        --ink: #20242f;
+        --line: #e4dbc4;
+        --danger: #d23b3b;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, #f6efe0 0%, #f5f0e8 100%);
+        color: var(--ink);
+        font-family: Arial, sans-serif;
+      }
+      .hidden { display: none !important; }
+      .app-shell {
+        max-width: 1100px;
+        margin: 24px auto;
+        padding: 0 16px 32px;
+      }
+      .auth-shell {
+        max-width: 520px;
+        margin: 48px auto;
+        background: var(--ivory);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 12px 24px -18px rgba(0,0,0,0.2);
+        padding: 28px;
+      }
+      .auth-shell h1 { margin-top: 0; color: var(--navy); }
+      .field { margin-bottom: 14px; }
+      label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+      input, select, button {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font-size: 0.95rem;
+      }
+      button {
+        cursor: pointer;
+        background: var(--gold);
+        color: var(--navy-deep);
+        border: none;
+        font-weight: 700;
+      }
+      button.secondary { background: var(--navy); color: var(--ivory); }
+      .status {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        border: 1px solid transparent;
+      }
+      .status[data-type='error'] { background: #fbe5e5; color: var(--danger); border-color: #f0b7b7; }
+      .status[data-type='success'] { background: #ebf8ee; color: #186b3e; border-color: #b3d9bf; }
+      .status[data-type='info'] { background: #eef2ff; color: var(--navy); border-color: #c9d6ff; }
+      .layout {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 18px;
+        min-height: 720px;
+      }
+      .panel {
+        background: var(--ivory);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 12px 24px -18px rgba(0,0,0,0.2);
+      }
+      .sidebar {
+        padding: 18px;
+      }
+      .sidebar h3 {
+        margin: 0 0 16px;
+        color: var(--navy);
+      }
+      .astrologer-card {
+        width: 100%;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 12px;
+        text-align: left;
+      }
+      .card-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .avatar {
+        width: 42px;
+        height: 42px;
+        background: linear-gradient(135deg, var(--navy), var(--gold));
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+      }
+      .card-top h4 { margin: 0; font-size: 1rem; }
+      .card-top p { margin: 2px 0 0; font-size: 0.74rem; color: #555; }
+      .card-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+        color: #555; font-size: 0.72rem;
+      }
+      .chat-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 720px;
+      }
+      .chat-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .chat-header h2 { margin: 0; color: var(--navy); font-size: 1.2rem; }
+      .chat-header-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .chat-header-actions button {
+        width: auto;
+        padding: 9px 12px;
+      }
+      .messages {
+        flex: 1;
+        padding: 18px;
+        overflow-y: auto;
+        background: linear-gradient(180deg, #faf7f1, #f8f2e8);
+      }
+      .message { margin-bottom: 10px; display: flex; }
+      .message.mine { justify-content: flex-end; }
+      .bubble {
+        max-width: 75%;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px 12px;
+      }
+      .message.mine .bubble {
+        background: var(--gold-light);
+        border-color: var(--gold);
+      }
+      .bubble p { margin: 0 0 6px; line-height: 1.5; }
+      .bubble time { font-size: 0.7rem; opacity: 0.8; }
+      .composer {
+        display: flex;
+        gap: 10px;
+        padding: 16px 18px;
+        border-top: 1px solid var(--line);
+        background: white;
+      }
+      .composer input { flex: 1; }
+      .composer button { width: auto; min-width: 96px; }
+      .user-badge {
+        display: inline-flex;
+        align-items: center;
+        background: var(--navy);
+        color: white;
+        font-size: 0.75rem;
+        padding: 6px 10px;
+        border-radius: 999px;
+        margin-bottom: 12px;
+      }
+      .upload-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .upload-wrap input[type='file'] {
+        width: auto;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%) translateY(20px);
+        background: var(--navy-deep);
+        color: white;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-size: 0.82rem;
+        opacity: 0;
+        transition: all 0.2s ease;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      @media (max-width: 760px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-shell" id="authShell">
+      <h1 id="authTitle">Customer access</h1>
+      <form id="authForm">
+        <div class="field">
+          <label for="authMode">I am signing in as</label>
+          <select id="authMode">
+            <option value="customer">Customer</option>
+            <option value="astrologer">Astrologer</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="••••••••" />
+        </div>
+        <div class="field" style="display:none;">
+          <label for="fullName">Full name</label>
+          <input id="fullName" type="text" placeholder="Full name" />
+        </div>
+        <div class="field">
+          <label for="role">Role</label>
+          <input id="role" type="text" value="customer" readonly />
+        </div>
+        <button id="submitText" type="submit">Sign in as customer</button>
+      </form>
+      <div class="status" id="statusText" data-type="info">Ready to authenticate.</div>
+    </div>
+
+    <div class="app-shell hidden" id="appShell">
+      <div class="user-badge" id="userBadge">USER</div>
+      <div class="layout">
+        <aside class="panel sidebar">
+          <h3>Available astrologers</h3>
+          <div id="astrologerList"></div>
+        </aside>
+
+        <main class="panel chat-panel">
+          <div class="chat-header">
+            <h2 id="conversationTitle">No conversation selected</h2>
+            <div class="chat-header-actions">
+              <button type="button" class="secondary" id="closeChatButton">Close Chat</button>
+            </div>
+          </div>
+
+          <div class="messages" id="messages"></div>
+
+          <div class="upload-wrap" style="padding: 12px 18px 0;">
+            <label for="uploadInput" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; color: var(--navy);">
+              <span>Attachment</span>
+              <input id="uploadInput" type="file" />
+            </label>
+          </div>
+
+          <div class="composer">
+            <input id="messageInput" type="text" placeholder="Type a message..." />
+            <button id="sendButton" type="button">Send</button>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="chat-app.js"></script>
+  </body>
+</html>
