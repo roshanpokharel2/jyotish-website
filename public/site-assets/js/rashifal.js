@@ -6,10 +6,10 @@ const RASHIFAL_SIGNS = {
 };
 
 const RASHIFAL_UI = {
-  ne: {title:'राशिफल', sub:'दैनिक, मासिक र वार्षिक फलादेश भाषा तथा क्षेत्रअनुसार।', daily:'दैनिक', monthly:'मासिक', yearly:'वार्षिक', region:'भौगोलिक क्षेत्र', source:'स्वचालित संकेत · {language} · {region}', auto:'स्वचालित परम्परागत मार्गदर्शन', updated:'अद्यावधिक', empty:'यस भाषा, क्षेत्र र अवधिका लागि फलादेश प्रकाशित गरिएको छैन।', loading:'फलादेश लोड हुँदैछ...', admin:'राशिफल प्रकाशित गर्नुहोस्', period:'अवधि', sign:'राशि', date:'सुरु मिति', prediction:'फलादेश', save:'प्रकाशित गर्नुहोस्', saved:'राशिफल प्रकाशित भयो।', error:'राशिफल प्रकाशित गर्न सकिएन।'},
-  en: {title:'Rashifal', sub:'Daily, monthly, and yearly forecasts matched to language and region.', daily:'Daily', monthly:'Monthly', yearly:'Yearly', region:'Geographic region', source:'Automatic guidance · {language} · {region}', auto:'Automatically generated traditional guidance', updated:'Updated', empty:'No forecast is published for this language, region, and period.', loading:'Loading forecast...', admin:'Publish Rashifal', period:'Period', sign:'Zodiac sign', date:'Start date', prediction:'Forecast', save:'Publish', saved:'Rashifal published.', error:'Rashifal could not be published.'},
-  hi: {title:'राशिफल', sub:'भाषा और क्षेत्र के अनुसार दैनिक, मासिक एवं वार्षिक फलादेश।', daily:'दैनिक', monthly:'मासिक', yearly:'वार्षिक', region:'भौगोलिक क्षेत्र', source:'स्वचालित संकेत · {language} · {region}', auto:'स्वचालित पारंपरिक मार्गदर्शन', updated:'अद्यतन', empty:'इस भाषा, क्षेत्र और अवधि के लिए फलादेश प्रकाशित नहीं है।', loading:'फलादेश लोड हो रहा है...', admin:'राशिफल प्रकाशित करें', period:'अवधि', sign:'राशि', date:'आरंभ तिथि', prediction:'फलादेश', save:'प्रकाशित करें', saved:'राशिफल प्रकाशित हो गया।', error:'राशिफल प्रकाशित नहीं हो सका।'},
-  sa: {title:'राशिफलम्', sub:'भाषा-क्षेत्रानुसारं दैनिक-मासिक-वार्षिकं फलादेशम्।', daily:'दैनिकम्', monthly:'मासिकम्', yearly:'वार्षिकम्', region:'भौगोलिकप्रदेशः', source:'स्वचालितः संकेतः · {language} · {region}', auto:'स्वचालितं पारम्परिकं मार्गदर्शनम्', updated:'अद्यतनम्', empty:'अस्याः भाषा-प्रदेश-कालावधेः फलादेशः प्रकाशितः नास्ति।', loading:'फलादेशः प्रचलति...', admin:'राशिफलं प्रकाशयतु', period:'कालावधिः', sign:'राशिः', date:'आरम्भदिनम्', prediction:'फलादेशः', save:'प्रकाशयतु', saved:'राशिफलं प्रकाशितम्।', error:'राशिफलं प्रकाशितुं न शक्यते।'}
+  ne: {title:'राशिफल', sub:'दैनिक, मासिक र वार्षिक फलादेश भाषा तथा क्षेत्रअनुसार।', daily:'दैनिक', monthly:'मासिक', yearly:'वार्षिक', region:'भौगोलिक क्षेत्र', source:'स्वचालित संकेत · {language} · {region}', auto:'स्वचालित परम्परागत मार्गदर्शन', updated:'अद्यावधिक', empty:'यस भाषा, क्षेत्र र अवधिका लागि फलादेश प्रकाशित गरिएको छैन।', loading:'फलादेश लोड हुँदैछ...', admin:'राशिफल प्रकाशित गर्नुहोस्', period:'अवधि', sign:'राशि', date:'सुरु मिति', prediction:'फलादेश', luckyTime:'शुभ समय', caution:'सावधानी', luckyColor:'शुभ रंग', luckyNumber:'शुभ अंक', periodPrefix:['आज यस राशिको मुख्य ध्यान:','यस महिना यस राशिको मुख्य ध्यान:','यस वर्ष यस राशिको मुख्य ध्यान:'], fallback:'स्थानीय परम्परागत संकेत', save:'प्रकाशित गर्नुहोस्', saved:'राशिफल प्रकाशित भयो।', error:'राशिफल प्रकाशित गर्न सकिएन।'},
+  en: {title:'Rashifal', sub:'Daily, monthly, and yearly forecasts matched to language and region.', daily:'Daily', monthly:'Monthly', yearly:'Yearly', region:'Geographic region', source:'Automatic guidance · {language} · {region}', auto:'Automatically generated traditional guidance', updated:'Updated', empty:'No forecast is published for this language, region, and period.', loading:'Loading forecast...', admin:'Publish Rashifal', period:'Period', sign:'Zodiac sign', date:'Start date', prediction:'Forecast', luckyTime:'Lucky time', caution:'Caution', luckyColor:'Lucky color', luckyNumber:'Lucky number', periodPrefix:['Today, focus on:','This month, focus on:','This year, focus on:'], fallback:'traditional fallback', save:'Publish', saved:'Rashifal published.', error:'Rashifal could not be published.'},
+  hi: {title:'राशिफल', sub:'भाषा और क्षेत्र के अनुसार दैनिक, मासिक एवं वार्षिक फलादेश।', daily:'दैनिक', monthly:'मासिक', yearly:'वार्षिक', region:'भौगोलिक क्षेत्र', source:'स्वचालित संकेत · {language} · {region}', auto:'स्वचालित पारंपरिक मार्गदर्शन', updated:'अद्यतन', empty:'इस भाषा, क्षेत्र और अवधि के लिए फलादेश प्रकाशित नहीं है।', loading:'फलादेश लोड हो रहा है...', admin:'राशिफल प्रकाशित करें', period:'अवधि', sign:'राशि', date:'आरंभ तिथि', prediction:'फलादेश', luckyTime:'शुभ समय', caution:'सावधानी', luckyColor:'शुभ रंग', luckyNumber:'शुभ अंक', periodPrefix:['आज इस राशि का मुख्य ध्यान:','इस माह इस राशि का मुख्य ध्यान:','इस वर्ष इस राशि का मुख्य ध्यान:'], fallback:'स्थानीय पारंपरिक संकेत', save:'प्रकाशित करें', saved:'राशिफल प्रकाशित हो गया।', error:'राशिफल प्रकाशित नहीं हो सका।'},
+  sa: {title:'राशिफलम्', sub:'भाषा-क्षेत्रानुसारं दैनिक-मासिक-वार्षिकं फलादेशम्।', daily:'दैनिकम्', monthly:'मासिकम्', yearly:'वार्षिकम्', region:'भौगोलिकप्रदेशः', source:'स्वचालितः संकेतः · {language} · {region}', auto:'स्वचालितं पारम्परिकं मार्गदर्शनम्', updated:'अद्यतनम्', empty:'अस्याः भाषा-प्रदेश-कालावधेः फलादेशः प्रकाशितः नास्ति।', loading:'फलादेशः प्रचलति...', admin:'राशिफलं प्रकाशयतु', period:'कालावधिः', sign:'राशिः', date:'आरम्भदिनम्', prediction:'फलादेशः', luckyTime:'शुभसमयः', caution:'सावधानी', luckyColor:'शुभवर्णः', luckyNumber:'शुभाङ्कः', periodPrefix:['अद्य अस्याः राशेः मुख्यं ध्यानम्:','अस्मिन् मासे अस्याः राशेः मुख्यं ध्यानम्:','अस्मिन् वर्षे अस्याः राशेः मुख्यं ध्यानम्:'], fallback:'स्थानीयः पारम्परिकः संकेतः', save:'प्रकाशयतु', saved:'राशिफलं प्रकाशितम्।', error:'राशिफलं प्रकाशितुं न शक्यते।'}
 };
 
 const RASHIFAL_REGIONS = [
@@ -56,10 +56,9 @@ const RASHIFAL_SIGN_PROFILES = [
 
 function rashifalFallbackEntries(period, language, region){
   const fallback = RASHIFAL_FALLBACK[language] || RASHIFAL_FALLBACK.en;
+  const ui = RASHIFAL_UI[language] || RASHIFAL_UI.en;
   const periodIndex = ['daily','monthly','yearly'].indexOf(period);
-  const periodPrefix = language === 'en'
-    ? ['Today, use this sign-specific focus:', 'This month, build on this sign-specific focus:', 'This year, strengthen this sign-specific focus:'][periodIndex]
-    : ['आज यस राशिको मुख्य ध्यान:', 'यस महिना यस राशिको मुख्य ध्यान:', 'यस वर्ष यस राशिको मुख्य ध्यान:'][periodIndex];
+  const periodPrefix = ui.periodPrefix[periodIndex];
   return RASHIFAL_SIGNS[language].map((sign, index) => {
     const profile = RASHIFAL_SIGN_PROFILES[index];
     const prediction = profile[language] || profile.en;
@@ -115,7 +114,7 @@ async function renderRashifal(){
   }
   const entries = error || !data || !data.length ? rashifalFallbackEntries(rashifalPeriod, LANG, rashifalRegion) : data;
   if(empty) empty.style.display='none';
-  const labels = [['शुभ समय','auspicious_time'],['सावधानी','caution'],['शुभ रंग','lucky_color'],['शुभ अंक','lucky_number']];
+  const labels = [[t.luckyTime,'auspicious_time'],[t.caution,'caution'],[t.luckyColor,'lucky_color'],[t.luckyNumber,'lucky_number']];
   const bySign = new Map(entries.map(entry => [entry.zodiac_sign, entry]));
   grid.innerHTML = RASHIFAL_SIGNS[LANG].map(sign => {
     const entry = bySign.get(sign) || entries.find(item => item.zodiac_sign === sign);
@@ -123,7 +122,7 @@ async function renderRashifal(){
     const details = labels.filter(([,key]) => entry[key]).map(([label,key]) => `<div class="rashifal-detail"><b>${rashifalText(label)}</b><span>${rashifalText(entry[key])}</span></div>`).join('');
     return `<article class="service-card rashifal-card"><h3>${rashifalText(sign)}</h3><p>${rashifalText(entry.prediction)}</p>${details}</article>`;
   }).join('');
-  if(error || !data || !data.length) setText('rashifalSourceNote', `${t.source.replace('{language}', LANG.toUpperCase()).replace('{region}', rashifalRegion)} · ${LANG === 'en' ? 'traditional fallback' : 'स्थानीय परम्परागत संकेत'}`);
+  if(error || !data || !data.length) setText('rashifalSourceNote', `${t.source.replace('{language}', LANG.toUpperCase()).replace('{region}', rashifalRegion)} · ${t.fallback}`);
 }
 
 function rashifalSetPeriod(period){ rashifalPeriod = period; renderRashifal(); }

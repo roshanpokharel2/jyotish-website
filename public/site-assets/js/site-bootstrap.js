@@ -1,5 +1,6 @@
 (function () {
   function bootstrap() {
+    document.getElementById('drawer')?.setAttribute('aria-hidden', 'true');
     if (typeof window.renderStatic === 'function') {
       window.renderStatic();
     }

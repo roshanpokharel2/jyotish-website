@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
 <!-- ===================== HEADER ===================== -->
 <header class="site">
   <div class="header-inner">
@@ -17,14 +16,14 @@
       <img src="/site-assets/logo.png" alt="Jyotish and Vastu Sewa Kendra" onerror="this.src='/site-assets/logo.png'">
       <span class="brand-name" id="brandName"></span>
     </a>
-    <nav class="main-nav" id="mainNav"></nav>
+    <nav class="main-nav" id="mainNav" aria-label="Primary navigation"></nav>
     <div class="header-actions">
       <div class="lang-switch">
-        <button class="lang-switch-btn" id="langSwitchBtn" onclick="toggleLangMenu(event)">
+        <button class="lang-switch-btn" id="langSwitchBtn" type="button" aria-haspopup="true" aria-expanded="false" onclick="toggleLangMenu(event)">
           <span id="langSelectorLabel"></span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <div class="lang-menu" id="langMenu">
+        <div class="lang-menu" id="langMenu" role="menu" aria-label="Language selection">
           <button id="langNe" onclick="setLang('ne')">नेपाली</button>
           <button id="langEn" onclick="setLang('en')">English</button>
           <button id="langHi" onclick="setLang('hi')">हिन्दी</button>
@@ -48,7 +47,7 @@
   </div>
 </div>
 
-<div class="drawer" id="drawer" onclick="if(event.target===this)toggleDrawer(false)">
+<div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Mobile navigation" onclick="if(event.target===this)toggleDrawer(false)">
   <div class="drawer-panel">
     <button class="drawer-close" onclick="toggleDrawer(false)">&times;</button>
     <div style="clear:both"></div>
@@ -64,6 +63,7 @@
   </div>
 </div>
 
+<div id="uiAnnouncement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <main>
 
 <!-- ===================== HOME VIEW ===================== -->

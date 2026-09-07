@@ -1583,6 +1583,7 @@ let consultType = 'online';
 let authTab = 'login';
 let vastuActiveCat = 'general';
 let demoLoggedIn = false;
+function announce(message){ const live = document.getElementById('uiAnnouncement'); if(live){ live.textContent=''; window.setTimeout(()=>{ live.textContent=message; },20); } }
 /* ============================================================
    RENDER NAV / STATIC LABELS
 ============================================================ */
@@ -1591,7 +1592,9 @@ function buildNav(container, isDrawer){
   const items = [['home','home'],['astrology','astrology'],['rashifal','rashifal'],['vastu','vastu'],['karmakanda','karmakanda'],['classes','classes'],['shop','shop'],['kundali','kundali'],['bookings','bookings'],['contact','contact'],['login','account']];
   items.forEach(([key,view])=>{
     const b = document.createElement('button');
+    b.type = 'button';
     b.textContent = T[LANG].nav[key];
+    b.setAttribute('aria-current', currentView === view ? 'page' : 'false');
     if(isDrawer) b.className='nav-item';
     b.onclick = ()=>{
       goView(view);
@@ -1983,12 +1986,19 @@ function goView(view, anchor){
   window.scrollTo({top:0, behavior:'instant' in window ? 'auto':'auto'});
   window.scrollTo(0,0);
   renderStatic(); // refresh active states (bottom nav)
+  const activeView = document.getElementById('view-'+view);
+  const heading = activeView?.querySelector('h1, h2');
+  if(heading){
+    heading.setAttribute('tabindex','-1');
+    window.setTimeout(()=>heading.focus({preventScroll:true}),60);
+  }
+  announce(activeView?.querySelector('h1')?.textContent || view);
   if(anchor){
     setTimeout(()=>{ const el=document.getElementById('anchor-'+anchor); if(el) el.scrollIntoView({behavior:'smooth'}); }, 60);
   }
 }
 
-function setLang(l){ LANG = l; renderStatic(); closeLangMenu(); }
+function setLang(l){ LANG = l; renderStatic(); closeLangMenu(); announce((T[LANG]?.langSelectorLabel || 'Language') + ': ' + (T[LANG]?.nav?.home || l)); }
 
 function toggleLangMenu(e){
   if(e) e.stopPropagation();
@@ -1997,17 +2007,26 @@ function toggleLangMenu(e){
   const willOpen = !menu.classList.contains('open');
   menu.classList.toggle('open', willOpen);
   btn.classList.toggle('open', willOpen);
+  btn.setAttribute('aria-expanded', String(willOpen));
 }
 function closeLangMenu(){
   document.getElementById('langMenu')?.classList.remove('open');
   document.getElementById('langSwitchBtn')?.classList.remove('open');
+  document.getElementById('langSwitchBtn')?.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', function(e){
   const wrap = document.querySelector('.lang-switch');
   if(wrap && !wrap.contains(e.target)) closeLangMenu();
 });
 
-function toggleDrawer(open){ document.getElementById('drawer').classList.toggle('open', open); }
+function toggleDrawer(open){
+  const drawer = document.getElementById('drawer');
+  if(!drawer) return;
+  drawer.classList.toggle('open', open);
+  drawer.setAttribute('aria-hidden', String(!open));
+  if(open) drawer.querySelector('.drawer-close')?.focus();
+  else document.querySelector('.burger')?.focus();
+}
 
 /* ============================================================
    TOAST

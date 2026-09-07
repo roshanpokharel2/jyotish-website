@@ -13,6 +13,12 @@ npm run dev
 
 Open http://localhost:3000. Use `npm run build` to create a production build and `npm start` to serve it.
 
+### UI extension contract
+
+- Use CSS tokens such as `var(--navy)`, `var(--ivory)`, `var(--ink)`, `var(--ink-soft)`, `var(--line)`, and `var(--gold)` instead of hard-coded colors so new components stay consistent with the website design.
+- Add visible text to the relevant `T` language object in `public/site-assets/script.js`, and render it through `T[LANG]`. Hard-coded user-facing text will not translate automatically.
+- Use semantic headings, labels connected to controls, keyboard-focusable buttons, and `setText()` for static labels. Announce significant view/language/theme changes with `announce()`.
+
 ## What you have built
 
 - Real Supabase schema for a scalable consultation platform
