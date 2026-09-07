@@ -115,8 +115,9 @@ async function bookingNext(){
     bookingState._error = T[LANG].payAttestRequired; renderBooking(); return;
   }
   if(current==='details'){
-    if(!detailsValid(bookingState)){
-      bookingState._error = T[LANG].validationRequired; renderBooking(); return;
+    const validationError = detailsValidationError(bookingState);
+    if(validationError){
+      bookingState._error = validationError; renderBooking(); return;
     }
     const year = new Date().getFullYear();
     const seq = String(Math.floor(Math.random()*90000+10000));

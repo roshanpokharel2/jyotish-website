@@ -45,9 +45,9 @@ function renderAskDashboard(){
   const answered = askState.history.filter(item=>item.status==='ANSWERED').length;
   const pending = askState.history.length - answered;
   const bs = [askState.dobBsYear,askState.dobBsMonth,askState.dobBsDay].filter(Boolean).join('/');
-  const history = askState.history.length ? askState.history.map(item=>`<div class="review-row"><span><b>${item.requestId || item.questionId}</b><br><small>${item.question}</small>${item.answer?`<br><span style="display:block;margin-top:6px;color:var(--ink-soft);">${item.answer}</span>`:''}</span><b>${askStatusLabel(item.status)}</b></div>`).join('') : `<div class="empty-box"><p>${t.askNoQuestions}</p></div>`;
+  const history = askState.history.length ? askState.history.map(item=>`<div class="review-row"><span><b>${escapeHtml(item.requestId || item.questionId)}</b><br><small>${escapeHtml(item.question)}</small>${item.answer?`<br><span style="display:block;margin-top:6px;color:var(--ink-soft);">${escapeHtml(item.answer)}</span>`:''}</span><b>${escapeHtml(askStatusLabel(item.status))}</b></div>`).join('') : `<div class="empty-box"><p>${t.askNoQuestions}</p></div>`;
   return `<div class="ask-dashboard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;"><div><span class="eyebrow">${t.askDashboardEyebrow}</span><h3>${t.ctAsk}</h3></div><button class="btn btn-ghost" onclick="askEditProfile()">${t.askEditProfile}</button></div>
-    <div class="disclaimer-box" style="text-align:left;margin:14px 0;"><b>${askState.name}</b><br>${t.askBirthDetails}: BS: ${bs || '—'} · AD: ${askState.dobAd || '—'} · ${askState.tob}<br>${askState.pob}, ${askState.birthCountry}</div>
+    <div class="disclaimer-box" style="text-align:left;margin:14px 0;"><b>${escapeHtml(askState.name)}</b><br>${t.askBirthDetails}: BS: ${escapeHtml(bs || '—')} · AD: ${escapeHtml(askState.dobAd || '—')} · ${escapeHtml(askState.tob)}<br>${escapeHtml(askState.pob)}, ${escapeHtml(askState.birthCountry)}</div>
     <div class="card-grid cols-3"><div class="stat-card"><b>${askState.history.length}</b><small>${t.askTotalQuestions}</small></div><div class="stat-card"><b>${answered}</b><small>${t.askAnswered}</small></div><div class="stat-card"><b>${pending}</b><small>${t.askPending}</small></div></div>
     <button class="btn btn-gold btn-block" style="margin:18px 0;" onclick="askAnother()">${t.askAnotherBtn}</button><p style="text-align:center;font-weight:700;">${t.askFeeNote}</p><h4>${t.askHistoryTitle}</h4>${history}</div>`;
 }
@@ -72,7 +72,7 @@ function renderAsk(){
     panel.innerHTML = `<div class="confirm-box"><div class="confirm-check">${ICONS.check}</div><h3>${t.askSuccessTitle}</h3>
       <div class="disclaimer-box" style="text-align:left;margin:14px 0;"><b>${t.payPendingBadge}</b><br>${t.payPendingNote}<br><br>${t.answerPendingNote}</div>
       <div class="booking-id">${t.questionRequestLabel}: ${askState.requestId}</div>
-      <div class="review-row" style="text-align:left;"><span>${t.askQuestionLabel}</span><b>${askState.question}</b></div>
+      <div class="review-row" style="text-align:left;"><span>${t.askQuestionLabel}</span><b>${escapeHtml(askState.question)}</b></div>
       <div style="margin-top:20px;"><button class="btn btn-gold" onclick="askAnother()">${t.askAnotherBtn}</button></div></div>`;
     return;
   }
@@ -86,10 +86,10 @@ function renderAsk(){
     html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <h3 style="margin:0;">${t.ctAsk}</h3><span class="price-pill">${t.feeAsk}</span></div>
       <p style="margin-top:12px;">${t.askInstruction}</p>
-      <div class="field" style="margin-top:14px;"><label>${t.askQuestionLabel} *</label><textarea rows="6" id="askQuestionInput" placeholder="${t.askPlaceholder}" oninput="askState.question=this.value">${askState.question}</textarea></div>
+      <div class="field" style="margin-top:14px;"><label>${t.askQuestionLabel} *</label><textarea rows="6" id="askQuestionInput" placeholder="${escapeHtml(t.askPlaceholder)}" oninput="askState.question=this.value">${escapeHtml(askState.question)}</textarea></div>
       <div class="disclaimer-box" style="margin-top:12px;">${t.askOneNotice}</div>`;
   } else if(askState.step===3){
-    html += `<h3>${t.askPreviewTitle}</h3><div class="review-row"><span>${t.askYourQuestion}</span><b>${askState.question}</b></div><div class="review-row"><span>${t.consultationFee}</span><b>${t.feeAsk}</b></div>
+    html += `<h3>${t.askPreviewTitle}</h3><div class="review-row"><span>${t.askYourQuestion}</span><b>${escapeHtml(askState.question)}</b></div><div class="review-row"><span>${t.consultationFee}</span><b>${t.feeAsk}</b></div>
       <label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer;"><input type="checkbox" ${askState.termsAccepted?'checked':''} onchange="askState.termsAccepted=this.checked;askState._error=null" style="width:auto;"><span>${t.termsCheckboxLabel}</span></label>
       <p class="disclaimer-box" style="margin-top:14px;">${t.askFollowupRule}</p>`;
   } else if(askState.step===4){
@@ -119,8 +119,9 @@ function askBack(){ if(askState.step>1){ askState.step--; askState._error=null; 
 
 async function askNext(){
   if(askState.step===1){
-    if(!detailsValid(askState)){
-      askState._error = T[LANG].validationRequired;
+    const validationError = detailsValidationError(askState);
+    if(validationError){
+      askState._error = validationError;
       renderAsk();
       return;
     }

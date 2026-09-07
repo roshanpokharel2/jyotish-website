@@ -82,8 +82,8 @@ function renderBookingsAdmin(){
   }
   panel.innerHTML = groups.map((group,index)=>`
     <details class="booking-record-folder" ${index===0?'open':''}>
-      <summary><span><strong>${group.name}</strong><small>${group.records.length} ${t.bookingsRecordsLabel}</small></span><button type="button" class="btn btn-ghost record-download" onclick="event.preventDefault();downloadBookingPerson(${index})">${t.bookingsDownloadPerson}</button></summary>
-      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${record.type}</span><small>${record.key}</small></summary><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
+      <summary><span><strong>${escapeHtml(group.name)}</strong><small>${group.records.length} ${t.bookingsRecordsLabel}</small></span><button type="button" class="btn btn-ghost record-download" onclick="event.preventDefault();downloadBookingPerson(${index})">${t.bookingsDownloadPerson}</button></summary>
+      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
     </details>`).join('');
 }
 
@@ -97,14 +97,14 @@ async function renderQuestionConsultationsAdmin(){
   panel.closest('.booking-panel')?.style.removeProperty('display');
   panel.innerHTML = '<div class="empty-box"><p>Loading question consultations...</p></div>';
   const {data, error} = await client.from('question_consultations').select('*').neq('payment_status','UNPAID').order('created_at',{ascending:false});
-  if(error){ panel.innerHTML = `<div class="empty-box"><p>${error.message}</p></div>`; return; }
+  if(error){ panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
   if(!data?.length){ panel.innerHTML = '<div class="empty-box"><p>No assigned question consultations.</p></div>'; return; }
   panel.innerHTML = data.map(item=>{
     const birth = item.birth_snapshot || {};
     const qid = item.question_id ? `Q-${String(item.question_id).padStart(6,'0')}` : item.id;
     const answer = String(item.answer || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<details class="booking-record-folder" style="margin-top:12px;"><summary><span><strong>${qid}</strong><small>${item.status} · ${item.customer_name}</small></span><small>${item.token || 'Token after payment verification'}</small></summary>
-      <div class="booking-record-list"><div class="disclaimer-box" style="text-align:left;"><b>Customer:</b> ${item.customer_name}<br><b>Birth:</b> BS ${(birth.dob_bs||[]).join('/')} · AD ${birth.dob_ad||'—'} · ${birth.birth_time||'—'} · ${birth.birth_place||'—'}, ${birth.birth_country||'—'}<br><b>Payment:</b> ${item.payment_status} · NPR 100<br><b>Question:</b> ${item.question_text}</div>
+    return `<details class="booking-record-folder" style="margin-top:12px;"><summary><span><strong>${escapeHtml(qid)}</strong><small>${escapeHtml(item.status)} · ${escapeHtml(item.customer_name)}</small></span><small>${escapeHtml(item.token || 'Token after payment verification')}</small></summary>
+      <div class="booking-record-list"><div class="disclaimer-box" style="text-align:left;"><b>Customer:</b> ${escapeHtml(item.customer_name)}<br><b>Birth:</b> BS ${escapeHtml((birth.dob_bs||[]).join('/'))} · AD ${escapeHtml(birth.dob_ad||'—')} · ${escapeHtml(birth.birth_time||'—')} · ${escapeHtml(birth.birth_place||'—')}, ${escapeHtml(birth.birth_country||'—')}<br><b>Payment:</b> ${escapeHtml(item.payment_status)} · NPR 100<br><b>Question:</b> ${escapeHtml(item.question_text)}</div>
       <div class="field"><label>Astrological Analysis</label><textarea rows="7" id="answer-${item.id}">${answer}</textarea></div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="saveQuestionAnswer('${item.id}','${qid}','IN REVIEW')">Save Draft</button><button class="btn btn-gold" onclick="saveQuestionAnswer('${item.id}','${qid}','ANSWERED')">Submit Answer</button></div></div></details>`;
   }).join('');
 }

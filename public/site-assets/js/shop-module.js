@@ -72,15 +72,15 @@ function renderOrderPanel(){
   }
   panel.innerHTML = `
     <h3>${t.orderPanelTitle}</h3>
-    <div class="review-row"><span>${t.orderProductLabel}</span><b>${orderState.productName}</b></div>
+    <div class="review-row"><span>${t.orderProductLabel}</span><b>${escapeHtml(orderState.productName)}</b></div>
     <div class="form-grid cols-2" style="margin-top:14px;">
       ${variantHtml}
       <div class="field"><label>${t.orderQtyLabel}</label><input type="number" min="1" id="orderQty" value="${orderState.qty}" oninput="orderState.qty=this.value"></div>
-      <div class="field"><label>${l.name}</label><input type="text" id="orderName" value="${orderState.name}" oninput="orderState.name=this.value"></div>
-      <div class="field"><label>${l.phone}</label><input type="text" id="orderPhone" value="${orderState.phone}" oninput="orderState.phone=this.value"></div>
-      <div class="field"><label>${t.orderAddressLabel}</label><input type="text" id="orderAddress" value="${orderState.address}" oninput="orderState.address=this.value"></div>
+      <div class="field"><label>${l.name} *</label><input type="text" id="orderName" value="${escapeHtml(orderState.name)}" oninput="orderState.name=this.value"></div>
+      <div class="field"><label>${l.phone} *</label><input type="text" id="orderPhone" value="${escapeHtml(orderState.phone)}" oninput="orderState.phone=this.value"></div>
+      <div class="field"><label>${t.orderAddressLabel} *</label><input type="text" id="orderAddress" value="${escapeHtml(orderState.address)}" oninput="orderState.address=this.value"></div>
     </div>
-    <div class="field" style="margin-top:14px;"><label>${t.orderNotesLabel}</label><textarea rows="3" id="orderNotes" oninput="orderState.notes=this.value">${orderState.notes}</textarea></div>
+    <div class="field" style="margin-top:14px;"><label>${t.orderNotesLabel}</label><textarea rows="3" id="orderNotes" oninput="orderState.notes=this.value">${escapeHtml(orderState.notes)}</textarea></div>
     <p style="font-size:.82rem;margin-top:10px;">${t.orderNote}</p>
     <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="submitOrder()">${t.orderSubmitBtn}</button>
   `;
@@ -88,6 +88,11 @@ function renderOrderPanel(){
 
 async function submitOrder(){
   const t = T[LANG];
+  const quantity = Number(orderState.qty);
+  if(!orderState.name.trim() || !orderState.phone.trim() || !orderState.address.trim()){ showToast(T[LANG].validationRequired); return; }
+  if(!isValidPhone(orderState.phone)){ showToast(LANG==='ne'?'कृपया मान्य फोन नम्बर लेख्नुहोस्।':'Please enter a valid phone number.'); return; }
+  if(!Number.isInteger(quantity) || quantity < 1 || quantity > 50){ showToast(LANG==='ne'?'मात्रा १ देखि ५० बीचमा हुनुपर्छ।':'Quantity must be a whole number between 1 and 50.'); return; }
+  orderState.qty = quantity;
   const year = new Date().getFullYear();
   const seq = String(Math.floor(Math.random()*9000+1000));
   orderState.orderId = `JVS-ORD-${year}-${seq}`;

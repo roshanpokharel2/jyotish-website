@@ -23,7 +23,7 @@ function getMainSupabase(){
 }
 
 function setAuthMessage(message, type='info'){
-  mainAuthMessage = message ? `<div class="disclaimer-box" data-auth-type="${type}" style="margin-top:14px;">${message}</div>` : '';
+  mainAuthMessage = message ? `<div class="disclaimer-box" data-auth-type="${escapeHtml(type)}" style="margin-top:14px;">${escapeHtml(message)}</div>` : '';
 }
 
 function setAuthTab(tab){
@@ -95,7 +95,7 @@ async function signInMain(){
   const email = document.getElementById('authLoginEmail')?.value.trim();
   const password = document.getElementById('authLoginPw')?.value;
   if(!client){ setAuthMessage('Supabase setup is required.', 'error'); renderAuthForm(); return; }
-  if(!email || !password){ setAuthMessage(T[LANG].validationRequired, 'error'); renderAuthForm(); return; }
+  if(!email || !password || !isValidEmail(email)){ setAuthMessage(!email || !password ? T[LANG].validationRequired : 'Please enter a valid email address.', 'error'); renderAuthForm(); return; }
   const { data, error } = await client.auth.signInWithPassword({email,password});
   if(error){ setAuthMessage(error.message, 'error'); renderAuthForm(); return; }
   await applyMainSession(data.session);
@@ -111,7 +111,8 @@ async function registerMain(){
   const preferredLanguage = document.getElementById('authRegLang')?.value || LANG;
   if(!client){ setAuthMessage('Supabase setup is required.', 'error'); renderAuthForm(); return; }
   if(!name || !email || !password || password !== confirm){ setAuthMessage(T[LANG].validationRequired, 'error'); renderAuthForm(); return; }
-  if(password.length < 6){ setAuthMessage('Password must contain at least 6 characters.', 'error'); renderAuthForm(); return; }
+  if(!isValidEmail(email)){ setAuthMessage('Please enter a valid email address.', 'error'); renderAuthForm(); return; }
+  if(password.length < 8){ setAuthMessage('Password must contain at least 8 characters.', 'error'); renderAuthForm(); return; }
   const { data, error } = await client.auth.signUp({email,password,options:{data:{full_name:name,phone,preferred_language:preferredLanguage}}});
   if(error){ setAuthMessage(error.message, 'error'); renderAuthForm(); return; }
   if(data.session){ await applyMainSession(data.session); return; }

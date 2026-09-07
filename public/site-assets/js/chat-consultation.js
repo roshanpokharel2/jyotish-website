@@ -51,8 +51,9 @@ function chatBack(){ if(chatState.step>1){ chatState.step--; chatState._error=nu
 
 async function chatNext(){
   if(chatState.step===1){
-    if(!detailsValid(chatState)){
-      chatState._error = T[LANG].validationRequired;
+    const validationError = detailsValidationError(chatState);
+    if(validationError){
+      chatState._error = validationError;
       renderChat();
       return;
     }

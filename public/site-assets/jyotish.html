@@ -241,6 +241,22 @@
   </div></div>
 </section>
 
+<!-- ===================== RASHIFAL VIEW ===================== -->
+<section class="view" id="view-rashifal">
+  <div class="page-hero"><div class="wrap"><h1 id="rashifalPageTitle"></h1><p id="rashifalPageSub"></p></div></div>
+  <div class="section section-alt"><div class="wrap">
+    <div class="rashifal-status-strip"><span class="status-dot"></span><strong id="rashifalAutoLabel"></strong><span class="status-divider"></span><span id="rashifalUpdatedLabel"></span></div>
+    <div class="rashifal-controls" aria-label="Rashifal filters">
+      <div class="faq-tabs" id="rashifalPeriodTabs"></div>
+      <label class="field rashifal-region-field"><span id="rashifalRegionLabel"></span><select id="rashifalRegionSelect"></select></label>
+    </div>
+    <p class="rashifal-source-note" id="rashifalSourceNote"></p>
+    <div class="card-grid cols-3" id="rashifalGrid"></div>
+    <div class="empty-box" id="rashifalEmpty" style="display:none;"></div>
+    <div id="rashifalAdminPanel" style="margin-top:32px;"></div>
+  </div></div>
+</section>
+
 <!-- ===================== VASTU VIEW ===================== -->
 <section class="view" id="view-vastu">
   <div class="page-hero"><div class="wrap"><div class="breadcrumb" id="vastuBread"></div><h1 id="vastuH1"></h1><p id="vastuP"></p></div></div>
@@ -249,13 +265,18 @@
     <div class="card-grid cols-3" id="vastuPlanGrid"></div>
     <div id="vastuProjectsPanel" style="margin-top:32px;"></div>
   </div></div>
-  <div class="section"><div class="wrap">
+  <div class="vastu-side-by-side">
+  <div class="section vastu-services-panel"><div class="wrap">
     <div class="faq-tabs" id="vastuCatTabs" style="justify-content:center;"></div>
     <div class="card-grid cols-3" id="vastuGrid"></div>
   </div></div>
-  <div class="section section-alt"><div class="wrap">
-    <div class="center"><span class="eyebrow" id="uploadEyebrow"></span><h2 id="uploadTitle"></h2></div>
-    <div style="max-width:640px;margin:0 auto;">
+  <div class="section section-alt vastu-upload-panel"><div class="wrap">
+      <div class="vastu-analysis-form">
+      <div class="vastu-form-heading">
+        <span class="eyebrow" id="uploadEyebrow"></span>
+        <h2 id="uploadTitle"></h2>
+      </div>
+      <p id="vastuUploadNotice" class="disclaimer-box" style="margin:0 0 16px;"></p>
       <div class="upload-box" id="uploadBox" onclick="document.getElementById('planFile').click()">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" style="margin:0 auto 10px;color:#b8892b;"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         <div id="uploadLabel" style="font-weight:600;color:var(--navy);"></div>
@@ -263,7 +284,6 @@
         <input type="file" id="planFile" accept=".pdf,.jpg,.jpeg,.png" multiple onchange="handlePlanUpload(event)">
       </div>
       <div id="planFileName" style="text-align:center;margin-top:10px;font-size:.85rem;color:var(--navy);font-weight:600;"></div>
-      <p id="vastuUploadNotice" class="disclaimer-box" style="margin-top:12px;"></p>
       <div class="form-grid cols-2" style="margin-top:22px;">
         <div class="field"><label id="vastuServiceTypeLabel"></label><select id="vastuServiceType" onchange="vastuState.serviceType=this.value"></select></div>
         <div class="field"><label id="vastuTopicLabel"></label><select id="vastuTopic" onchange="vastuState.topic=this.value"></select></div>
@@ -280,8 +300,9 @@
       <div class="field" style="margin-top:14px;"><label id="lblProblem"></label><textarea rows="4" id="vProblem"></textarea></div>
       <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="submitVastu()" id="vastuSubmitBtn"></button>
       <div id="vastuAnalysisResult" style="margin-top:24px;"></div>
-    </div>
+      </div>
   </div></div>
+  </div>
 
   <div class="section section-alt">
     <div class="wrap">

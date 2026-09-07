@@ -373,6 +373,29 @@ create table if not exists public.daily_horoscopes (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+create table if not exists public.rashifal_entries (
+  id uuid primary key default gen_random_uuid(),
+  period text not null check (period in ('daily','monthly','yearly')),
+  period_start date not null,
+  language text not null check (language in ('ne','en','hi','sa')),
+  region_code text not null default 'GLOBAL',
+  zodiac_sign text not null,
+  title text,
+  prediction text not null,
+  auspicious_time text,
+  caution text,
+  lucky_color text,
+  lucky_number text,
+  general_guidance text,
+  published boolean not null default false,
+  published_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint rashifal_entries_unique_slot unique (period, period_start, language, region_code, zodiac_sign)
+);
+
+create index if not exists rashifal_entries_lookup_idx
+on public.rashifal_entries (period, period_start, language, region_code, published);
 
 create table if not exists public.marriage_matching_requests (
   id uuid primary key default gen_random_uuid(),
@@ -573,6 +596,7 @@ alter table public.vastu_analyses enable row level security;
 alter table public.vastu_subscriptions enable row level security;
 alter table public.question_consultations enable row level security;
 alter table public.daily_horoscopes enable row level security;
+alter table public.rashifal_entries enable row level security;
 alter table public.marriage_matching_requests enable row level security;
 
 create policy "users can view own profile"
@@ -624,6 +648,12 @@ on public.daily_horoscopes for select using (published = true);
 
 create policy "admins can manage daily horoscopes"
 on public.daily_horoscopes for all using (exists (select 1 from public.users where id = auth.uid() and role = 'admin'))
+with check (exists (select 1 from public.users where id = auth.uid() and role = 'admin'));
+create policy "everyone can view published rashifal"
+on public.rashifal_entries for select using (published = true);
+
+create policy "admins can manage rashifal"
+on public.rashifal_entries for all using (exists (select 1 from public.users where id = auth.uid() and role = 'admin'))
 with check (exists (select 1 from public.users where id = auth.uid() and role = 'admin'));
 
 create policy "customers can view own marriage matching requests"
@@ -691,9 +721,10 @@ on public.question_consultations
 for update using (auth.uid() = (select user_id from public.astrologers where id = astrologer_id))
 with check (auth.uid() = (select user_id from public.astrologers where id = astrologer_id));
 
+drop policy if exists "astrologers can view own profile" on public.astrologers;
 create policy "astrologers can view own profile"
 on public.astrologers
-for select using (auth.uid() = user_id or auth.uid() is not null);
+for select using (auth.uid() = user_id);
 
 create policy "astrologers can update own profile"
 on public.astrologers

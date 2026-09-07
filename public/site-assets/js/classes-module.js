@@ -54,9 +54,9 @@ function renderEnrollPanel(){
     <h3>${t.enrollFormTitle}</h3>
     <div class="review-row"><span>${t.enrollCourseLabel}</span><b>${enrollState.courseName}</b></div>
     <div class="form-grid cols-2" style="margin-top:14px;">
-      <div class="field"><label>${l.name}</label><input type="text" value="${enrollState.name}" oninput="enrollState.name=this.value"></div>
-      <div class="field"><label>${l.phone}</label><input type="text" value="${enrollState.phone}" oninput="enrollState.phone=this.value"></div>
-      <div class="field"><label>${l.email}</label><input type="email" value="${enrollState.email}" oninput="enrollState.email=this.value"></div>
+      <div class="field"><label>${l.name} *</label><input type="text" value="${escapeHtml(enrollState.name)}" oninput="enrollState.name=this.value"></div>
+      <div class="field"><label>${l.phone} *</label><input type="text" value="${escapeHtml(enrollState.phone)}" oninput="enrollState.phone=this.value"></div>
+      <div class="field"><label>${l.email} *</label><input type="email" value="${escapeHtml(enrollState.email)}" oninput="enrollState.email=this.value"></div>
     </div>
     <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="submitEnroll()">${t.enrollSubmitBtn}</button>
   `;
@@ -64,6 +64,8 @@ function renderEnrollPanel(){
 
 async function submitEnroll(){
   const t = T[LANG];
+  if(!enrollState.name.trim() || !enrollState.phone.trim() || !enrollState.email.trim()){ showToast(T[LANG].validationRequired); return; }
+  if(!isValidEmail(enrollState.email) || !isValidPhone(enrollState.phone)){ showToast(LANG==='ne'?'कृपया मान्य इमेल र फोन नम्बर लेख्नुहोस्।':'Please enter a valid email and phone number.'); return; }
   const year = new Date().getFullYear();
   const seq = String(Math.floor(Math.random()*9000+1000));
   enrollState.enrollId = `JVS-CLS-${year}-${seq}`;

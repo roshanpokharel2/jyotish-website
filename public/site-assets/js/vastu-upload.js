@@ -57,7 +57,7 @@ function vastuSelectPlan(planIndex){
 
 function handlePlanUpload(e){
   const files = [...(e.target.files || [])];
-  const valid = files.filter(file=>['image/jpeg','image/png','application/pdf'].includes(file.type) && file.size <= 10 * 1024 * 1024);
+  const valid = files.filter(file=>['image/jpeg','image/png','application/pdf'].includes(file.type) && file.size > 0 && file.size <= 10 * 1024 * 1024).slice(0,5);
   vastuState.files = valid;
   document.getElementById('planFileName').textContent = valid.length ? valid.map(file=>`✓ ${file.name}`).join(' · ') : '';
   if(!valid.length) return;
@@ -193,6 +193,14 @@ function renderVcPinsList(){
 async function submitVastu(){
   const t = T[LANG];
   if(!vastuState.files.length){ showToast(vastuText('कृपया नक्सा वा फोटो Upload गर्नुहोस्।','Please upload a map or photo.')); return; }
+  const requiredFields = [
+    ['vLocation','कृपया स्थान लेख्नुहोस्।','Please enter the property location.'],
+    ['vProblem','कृपया समस्या वा आवश्यकताको विवरण लेख्नुहोस्।','Please describe the problem or requirement.']
+  ];
+  const missingField = requiredFields.find(([id]) => !document.getElementById(id)?.value.trim());
+  if(missingField){ showToast(vastuText(missingField[1],missingField[2])); document.getElementById(missingField[0])?.focus(); return; }
+  const floors = Number(document.getElementById('vFloors')?.value);
+  if(!Number.isInteger(floors) || floors < 1 || floors > 200){ showToast(vastuText('तल संख्या १ देखि २०० बीचमा हुनुपर्छ।','Floors must be a whole number between 1 and 200.')); return; }
   const record = {
     direction: document.getElementById('vDirection').value,
     buildingType: document.getElementById('vBuildingType').value,

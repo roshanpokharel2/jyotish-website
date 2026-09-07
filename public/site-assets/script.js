@@ -1,4 +1,3 @@
-
 /* ============================================================
    ICONS
 ============================================================ */
@@ -34,7 +33,7 @@ const ICONS = {
 const T = {
 ne: {
   brand:"ज्योतिष तथा वास्तु सेवा केन्द्र", brandTag:"वैदिक ज्योतिष र वास्तुशास्त्र",
-  nav:{home:"गृहपृष्ठ",astrology:"ज्योतिष",vastu:"वास्तु",karmakanda:"कर्मकाण्ड",directory:"विशेषज्ञ",classes:"अनलाइन कक्षा",shop:"पसल",kundali:"कुण्डली",booking:"परामर्श बुक",bookings:"बुकिङ रेकर्ड",contact:"सम्पर्क",login:"लगइन",account:"मेरो खाता"},
+  nav:{home:"गृहपृष्ठ",astrology:"ज्योतिष",rashifal:"राशिफल",vastu:"वास्तु",karmakanda:"कर्मकाण्ड",directory:"विशेषज्ञ",classes:"अनलाइन कक्षा",shop:"पसल",kundali:"कुण्डली",booking:"परामर्श बुक",bookings:"बुकिङ रेकर्ड",contact:"सम्पर्क",login:"लगइन",account:"मेरो खाता"},
   headerCta:"परामर्शको लागि बुकिङ गर्नुहोस्",
   heroEyebrow:"शास्त्रीय वैदिक ज्योतिष • वास्तुशास्त्र • नेपाल",
   heroTitle:"ज्योतिष तथा वास्तु सेवाको विश्वसनीय केन्द्र",
@@ -340,7 +339,7 @@ ne: {
 },
 en: {
   brand:"Jyotish and Vastu Sewa Kendra", brandTag:"Vedic Astrology & Vastu Shastra",
-  nav:{home:"Home",astrology:"Astrology",vastu:"Vastu",karmakanda:"Karmakanda",directory:"Experts",classes:"Online Classes",shop:"Shop",kundali:"Kundali",booking:"Book Appointment",bookings:"Booked Services",contact:"Contact",login:"Login",account:"My Account"},
+  nav:{home:"Home",astrology:"Astrology",rashifal:"Rashifal",vastu:"Vastu",karmakanda:"Karmakanda",directory:"Experts",classes:"Online Classes",shop:"Shop",kundali:"Kundali",booking:"Book Appointment",bookings:"Booked Services",contact:"Contact",login:"Login",account:"My Account"},
   headerCta:"Book a Consultation",
   heroEyebrow:"Classical Vedic Jyotish • Vastu Shastra • Nepal",
   heroTitle:"Your Trusted Center for Jyotish and Vastu Consultation",
@@ -646,7 +645,7 @@ en: {
 },
 hi: {
   brand:"ज्योतिष एवं वास्तु सेवा केंद्र", brandTag:"वैदिक ज्योतिष एवं वास्तु शास्त्र",
-  nav:{home:"होम",astrology:"ज्योतिष",vastu:"वास्तु",karmakanda:"कर्मकांड",directory:"विशेषज्ञ",classes:"ऑनलाइन कक्षाएँ",shop:"दुकान",kundali:"कुंडली",booking:"परामर्श बुक करें",bookings:"बुकिंग रिकॉर्ड",contact:"संपर्क",login:"लॉगिन",account:"मेरा खाता"},
+  nav:{home:"होम",astrology:"ज्योतिष",rashifal:"राशिफल",vastu:"वास्तु",karmakanda:"कर्मकांड",directory:"विशेषज्ञ",classes:"ऑनलाइन कक्षाएँ",shop:"दुकान",kundali:"कुंडली",booking:"परामर्श बुक करें",bookings:"बुकिंग रिकॉर्ड",contact:"संपर्क",login:"लॉगिन",account:"मेरा खाता"},
   headerCta:"परामर्श हेतु बुकिंग करें",
   heroEyebrow:"शास्त्रीय वैदिक ज्योतिष • वास्तु शास्त्र • नेपाल",
   heroTitle:"ज्योतिष एवं वास्तु सेवा का विश्वसनीय केंद्र",
@@ -951,7 +950,7 @@ hi: {
 },
 sa: {
   brand:"ज्योतिष-वास्तु-सेवा-केन्द्रम्", brandTag:"वैदिकज्योतिषम् वास्तुशास्त्रं च",
-  nav:{home:"गृहपृष्ठम्",astrology:"ज्योतिषम्",vastu:"वास्तु",karmakanda:"कर्मकाण्डम्",directory:"विशेषज्ञाः",classes:"ऑनलाइन-अध्ययनम्",shop:"विपणिः",kundali:"कुण्डली",booking:"परामर्शः आरक्ष्यताम्",bookings:"आरक्षण-लेखाः",contact:"सम्पर्कः",login:"प्रवेशः",account:"मम कक्षः"},
+  nav:{home:"गृहपृष्ठम्",astrology:"ज्योतिषम्",rashifal:"राशिफलम्",vastu:"वास्तु",karmakanda:"कर्मकाण्डम्",directory:"विशेषज्ञाः",classes:"ऑनलाइन-अध्ययनम्",shop:"विपणिः",kundali:"कुण्डली",booking:"परामर्शः आरक्ष्यताम्",bookings:"आरक्षण-लेखाः",contact:"सम्पर्कः",login:"प्रवेशः",account:"मम कक्षः"},
   headerCta:"परामर्शार्थम् आरक्षणं क्रियताम्",
   heroEyebrow:"शास्त्रीयं वैदिकज्योतिषम् • वास्तुशास्त्रम् • नेपालः",
   heroTitle:"ज्योतिष-वास्तु-सेवायाः विश्वसनीयं केन्द्रम्",
@@ -1589,7 +1588,7 @@ let demoLoggedIn = false;
 ============================================================ */
 function buildNav(container, isDrawer){
   container.innerHTML='';
-  const items = [['home','home'],['astrology','astrology'],['vastu','vastu'],['karmakanda','karmakanda'],['classes','classes'],['shop','shop'],['kundali','kundali'],['bookings','bookings'],['contact','contact'],['login','account']];
+  const items = [['home','home'],['astrology','astrology'],['rashifal','rashifal'],['vastu','vastu'],['karmakanda','karmakanda'],['classes','classes'],['shop','shop'],['kundali','kundali'],['bookings','bookings'],['contact','contact'],['login','account']];
   items.forEach(([key,view])=>{
     const b = document.createElement('button');
     b.textContent = T[LANG].nav[key];
@@ -1638,6 +1637,9 @@ function selectServiceMenu(type,target){
 }
 
 function setText(id, val){ const el=document.getElementById(id); if(el) el.textContent=val; }
+function escapeHtml(value){ return String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character])); }
+function isValidEmail(value){ return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim()); }
+function isValidPhone(value){ return !value || /^[+\d][\d\s().-]{6,19}$/.test(String(value).trim()); }
 
 function renderStatic(){
   const t = T[LANG];
@@ -1840,6 +1842,9 @@ function renderStatic(){
   setText('vastuPlatformTitle', t.vastuPlatformTitle || (LANG==='en'?'Vastu Analysis and Remedies':'वास्तु विश्लेषण तथा समाधान'));
   setText('vastuPlatformSub', t.vastuPlatformSub || (LANG==='en'?'Get a map-based initial insight, then unlock a detailed expert-configured analysis.':'आफ्नो नक्सा तथा विवरणका आधारमा प्रारम्भिक संकेत र expert-configured विस्तृत विश्लेषण प्राप्त गर्नुहोस्।'));
   setText('uploadEyebrow', t.uploadEyebrow); setText('uploadTitle', t.uploadTitle);
+  setText('vastuContextEyebrow', t.vastuPlatformEyebrow);
+  setText('vastuContextTitle', t.vastuPlatformTitle);
+  setText('vastuUploadContext', t.vastuPlatformSub || t.uploadHint);
   setText('uploadLabel', t.uploadLabel); setText('uploadHint', t.uploadHint);
   setText('vastuUploadNotice', t.vastuUploadNotice || (LANG==='en'?'Upload a clear map, floor plan or property photo.':'कृपया नक्सा स्पष्ट रूपमा Upload गर्नुहोस्।'));
   setText('vastuServiceTypeLabel', t.vastuServiceTypeLabel || (LANG==='en'?'Vastu service':'वास्तु सेवा'));
@@ -1852,6 +1857,7 @@ function renderStatic(){
   fillSelect('vDirection', t.directions); fillSelect('vBuildingType', t.buildingTypes);
   renderVastuDirectionFields();
   if(typeof loadLatestDailyHoroscope === 'function') loadLatestDailyHoroscope();
+    if(typeof renderRashifal === 'function') renderRashifal();
   if(typeof renderVastuPlatform === 'function') renderVastuPlatform();
   if(typeof renderMarriageMatchForm === 'function') renderMarriageMatchForm();
 
@@ -1885,6 +1891,7 @@ function renderStatic(){
   setText('questionConsultationsRefreshEl', t.bookingsRefresh);
   if(typeof renderQuestionConsultationsAdmin === 'function') renderQuestionConsultationsAdmin();
   if(typeof renderDailyHoroscopeAdmin === 'function') renderDailyHoroscopeAdmin();
+  if(typeof renderRashifalAdmin === 'function') renderRashifalAdmin();
 
   // ---- new sections ----
   setText('kkTitleEl', t.kkTitle); setText('kkSubEl', t.kkSub);
@@ -2165,15 +2172,15 @@ function renderDetailsFieldsHtml(flow, state, t, includeMessage){
   let preview = '';
   if(state.dobBsYear && state.dobBsMonth && state.dobBsDay && state.dobAd){
     const mName = (LANG==='en'?BS_MONTHS_EN:BS_MONTHS_NE)[state.dobBsMonth-1] || state.dobBsMonth;
-    preview = `<p style="font-size:.82rem;color:var(--navy);font-weight:600;margin-top:8px;">${state.dobBsDay} ${mName} ${state.dobBsYear} वि.सं. &nbsp;•&nbsp; AD ${state.dobAd}</p>`;
+    preview = `<p style="font-size:.82rem;color:var(--navy);font-weight:600;margin-top:8px;">${escapeHtml(state.dobBsDay)} ${escapeHtml(mName)} ${escapeHtml(state.dobBsYear)} वि.सं. &nbsp;•&nbsp; AD ${escapeHtml(state.dobAd)}</p>`;
   }
   let html = `<h3>${t.yourDetails}</h3><div class="form-grid cols-2">
-    <div class="field"><label>${l.name} *</label><input value="${state.name}" oninput="setFlowField('${flow}','name',this.value)"></div>
-    <div class="field"><label>${l.phone}${optTag}</label><input value="${state.phone}" oninput="setFlowField('${flow}','phone',this.value)"></div>
-    <div class="field"><label>${l.email}${optTag}</label><input type="email" value="${state.email}" oninput="setFlowField('${flow}','email',this.value)"></div>
-    <div class="field"><label>${l.pob} *</label><input value="${state.pob}" oninput="setFlowField('${flow}','pob',this.value)"></div>
-    <div class="field"><label>${t.birthCountryLabel} *</label><input value="${state.birthCountry}" oninput="setFlowField('${flow}','birthCountry',this.value)"></div>
-    <div class="field"><label>${l.tob} *</label><input type="time" value="${state.tob}" onchange="setFlowField('${flow}','tob',this.value)"></div>
+    <div class="field"><label>${l.name} *</label><input value="${escapeHtml(state.name)}" oninput="setFlowField('${flow}','name',this.value)"></div>
+    <div class="field"><label>${l.phone}${optTag}</label><input value="${escapeHtml(state.phone)}" oninput="setFlowField('${flow}','phone',this.value)"></div>
+    <div class="field"><label>${l.email}${optTag}</label><input type="email" value="${escapeHtml(state.email)}" oninput="setFlowField('${flow}','email',this.value)"></div>
+    <div class="field"><label>${l.pob} *</label><input value="${escapeHtml(state.pob)}" oninput="setFlowField('${flow}','pob',this.value)"></div>
+    <div class="field"><label>${t.birthCountryLabel} *</label><input value="${escapeHtml(state.birthCountry)}" oninput="setFlowField('${flow}','birthCountry',this.value)"></div>
+    <div class="field"><label>${l.tob} *</label><input type="time" value="${escapeHtml(state.tob)}" onchange="setFlowField('${flow}','tob',this.value)"></div>
   </div>
   <div style="margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--cream);">
     <label style="font-weight:700;color:var(--navy);">${l.dob} *</label>
@@ -2188,14 +2195,14 @@ function renderDetailsFieldsHtml(flow, state, t, includeMessage){
       </div>
       <div>
         <label style="font-size:.78rem;">${t.dobAdLabel}</label>
-        <input type="date" value="${state.dobAd||''}" onchange="setFlowAd('${flow}',this.value)">
+        <input type="date" value="${escapeHtml(state.dobAd||'')}" onchange="setFlowAd('${flow}',this.value)">
       </div>
     </div>
     <p style="font-size:.78rem;color:var(--ink-soft);margin-top:8px;">${t.dobConvertNote}</p>
     ${preview}
   </div>`;
   if(includeMessage){
-    html += `<div class="field" style="margin-top:14px;"><label>${l.message}</label><textarea rows="3" oninput="setFlowField('${flow}','message',this.value)">${state.message||''}</textarea></div>`;
+    html += `<div class="field" style="margin-top:14px;"><label>${l.message}</label><textarea rows="3" oninput="setFlowField('${flow}','message',this.value)">${escapeHtml(state.message||'')}</textarea></div>`;
   }
   return html;
 }
@@ -2208,12 +2215,19 @@ function renderPaymentStepHtmlFor(prefix, t, fee, state){
       <input type="checkbox" ${state.paymentAttested?'checked':''} onchange="${prefix}_setAttested(this.checked)" style="width:auto;">
       <span style="font-weight:600;">${t.payAttestLabel}</span>
     </label>
-    <div class="field" style="margin-top:12px;"><label>${t.payRefLabel}</label><input value="${state.paymentRef}" oninput="${prefix}_setPaymentRef(this.value)"></div>`;
+    <div class="field" style="margin-top:12px;"><label>${t.payRefLabel}</label><input value="${escapeHtml(state.paymentRef)}" oninput="${prefix}_setPaymentRef(this.value)"></div>`;
 }
 
-function detailsValid(state){
-  return [state.name, state.pob, state.birthCountry, state.tob, state.dobAd].every(v=>v && String(v).trim());
+function detailsValidationError(state){
+  const missing = !state.name || !state.pob || !state.birthCountry || !state.tob || !state.dobAd;
+  if(missing) return T[LANG].validationRequired;
+  if(!isValidEmail(state.email)) return LANG==='ne' ? 'कृपया मान्य इमेल लेख्नुहोस्।' : 'Please enter a valid email address.';
+  if(!isValidPhone(state.phone)) return LANG==='ne' ? 'कृपया मान्य फोन नम्बर लेख्नुहोस्।' : 'Please enter a valid phone number.';
+  const birthDate = new Date(`${state.dobAd}T00:00:00`);
+  if(Number.isNaN(birthDate.getTime()) || birthDate > new Date()) return LANG==='ne' ? 'जन्म मिति मान्य र भविष्यको नभएको हुनुपर्छ।' : 'Birth date must be valid and cannot be in the future.';
+  return '';
 }
+function detailsValid(state){ return !detailsValidationError(state); }
 
 /* ============================================================
    LIVE PANCHANGA / MUHURTA MODULE

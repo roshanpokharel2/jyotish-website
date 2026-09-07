@@ -163,15 +163,15 @@ async function loadAstrologers() {
     button.className = 'astrologer-card';
     button.innerHTML = `
       <div class="card-top">
-        <div class="avatar">${(astrologer.name || 'A').split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
+        <div class="avatar">${escapeHtml((astrologer.name || 'A').split(' ').map((p) => p[0]).slice(0, 2).join(''))}</div>
         <div>
-          <h4>${astrologer.name}</h4>
-          <p>${astrologer.specialization || 'General Astrology'}</p>
+          <h4>${escapeHtml(astrologer.name || 'Astrologer')}</h4>
+          <p>${escapeHtml(astrologer.specialization || 'General Astrology')}</p>
         </div>
       </div>
       <div class="card-meta">
-        <span>${astrologer.languages ? astrologer.languages.join(', ') : 'Nepali / English'}</span>
-        <strong>NPR ${Number(astrologer.consultation_fee || 600)}</strong>
+        <span>${escapeHtml(astrologer.languages ? astrologer.languages.join(', ') : 'Nepali / English')}</span>
+        <strong>NPR ${Number.isFinite(Number(astrologer.consultation_fee)) ? Number(astrologer.consultation_fee) : 600}</strong>
       </div>
     `;
 
@@ -364,8 +364,14 @@ async function closeChat() {
 async function handleFileUpload(event) {
   const file = event.target.files[0];
   if (!file || !APP.conversationId) return;
+  const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+  if (!allowedTypes.includes(file.type) || file.size <= 0 || file.size > 10 * 1024 * 1024) {
+    setStatus('Only JPG, PNG, or PDF files up to 10 MB are accepted.', 'error');
+    event.target.value = '';
+    return;
+  }
 
-  const fileName = `${Date.now()}-${file.name}`;
+  const fileName = `${APP.conversationId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const { data, error } = await APP.supabase.storage
     .from('chat-attachments')
     .upload(fileName, file, { upsert: false });

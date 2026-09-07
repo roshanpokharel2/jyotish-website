@@ -10,6 +10,7 @@ const scripts = [
   '/site-assets/script.js',
   '/site-assets/js/vastu-upload.js',
   '/site-assets/js/daily-horoscope.js',
+    '/site-assets/js/rashifal.js',
   '/site-assets/js/chat-consultation.js',
   '/site-assets/js/ask-flow.js',
   '/site-assets/js/booking-flow.js',
