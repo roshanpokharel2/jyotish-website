@@ -523,37 +523,10 @@ alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.chat_conversations;
 alter publication supabase_realtime add table public.chat_participants;
 
-create or replace function public.seed_initial_astrologer()
-returns void as $$
-begin
-  if not exists (select 1 from public.astrologers where name = 'Krishna Prasad Pokharel') then
-    insert into public.astrologers (
-      user_id,
-      name,
-      biography,
-      qualification,
-      experience_years,
-      specialization,
-      languages,
-      consultation_fee,
-      status,
-      is_active
-    )
-    values (
-      '00000000-0000-0000-0000-000000000000'::uuid,
-      'Krishna Prasad Pokharel',
-      'Initial seeded astrologer record for the platform.',
-      'Jyotisha and Vastu Specialist',
-      12,
-      'Vedic astrology, kundali analysis, vastu guidance',
-      array['Nepali', 'Hindi', 'English'],
-      600,
-      'active',
-      true
-    );
-  end if;
-end;
-$$ language plpgsql;
+-- Note: the first astrologer cannot be seeded from this file. astrologers.user_id is
+-- `not null references public.users(id)`, and public.users.id references auth.users(id),
+-- so the row must be created after a real Auth user exists.
+-- See README section 8, "How to create the first astrologer account".
 
 create or replace function public.handle_new_user()
 returns trigger as $$
@@ -900,28 +873,5 @@ values
   ('Direct Consultation', 'DIRECT', 'In-person and on-site consultation.', 0, true)
 on conflict do nothing;
 
-insert into public.astrologers (
-  user_id,
-  name,
-  biography,
-  qualification,
-  experience_years,
-  specialization,
-  languages,
-  consultation_fee,
-  status,
-  is_active
-)
-values (
-  '00000000-0000-0000-0000-000000000000'::uuid,
-  'Krishna Prasad Pokharel',
-  'Initial astrologer record for the platform.',
-  'Jyotisha and Vastu Specialist',
-  12,
-  'Vedic astrology, kundali analysis, vastu guidance',
-  array['Nepali', 'Hindi', 'English'],
-  600,
-  'active',
-  true
-)
-on conflict do nothing;
+-- The first astrologer record is created manually after the Auth user exists.
+-- See README section 8, "How to create the first astrologer account".

@@ -27,8 +27,14 @@ Open http://localhost:3000. Use `npm run build` to create a production build and
 - Secure RLS policies for scoped access
 - Realtime messaging support for customer ↔ astrologer chat
 - Payment, consultation, booking, token, and availability tables prepared for future phases
-- Initial astrologer seed record for Krishna Prasad Pokharel, while keeping the system extensible for unlimited future astrologers
 - A working browser-based chat MVP that connects to Supabase Auth and Realtime
+
+## Where the build is going
+
+`docs/IMPLEMENTATION-PLAN.md` is the ordered build plan for the marketplace
+(eSewa QR payments with manual Super Admin verification, ledger, manual payouts,
+audio/video consultations). `docs/ARCHITECTURE-DECISIONS.md` records why existing
+tables are extended rather than replaced. Work through the plan a step at a time.
 
 ## What I need to configure
 
@@ -36,10 +42,12 @@ Before running the app, set up the Supabase project and paste your values into t
 
 ## Project structure
 
-- `database/schema.sql` — complete relational schema and seed data
+- `database/schema.sql` — complete relational schema and seed data (from-scratch snapshot)
+- `database/migrations/` — numbered additive SQL applied on top of the snapshot
+- `docs/` — implementation plan and architecture decisions
 - `app/` — Next.js App Router shell and legacy site loader
-- `public/site-assets/` — browser runtime used by the migrated site
-- `.env.example` — Next.js environment variable template
+- `public/site-assets/` — the browser runtime; **this is the only frontend tree that is served**
+- `.env.example` — environment variable template
 - `README.md` — setup and deployment instructions
 
 ---
@@ -48,12 +56,13 @@ Before running the app, set up the Supabase project and paste your values into t
 
 1. Create a new Supabase project at https://supabase.com
 2. Open the SQL editor and run the SQL in `database/schema.sql`
-3. Create a storage bucket named `chat-attachments`
-4. Enable Realtime for the relevant tables (see schema comments)
-5. Enable Email/Password auth in Supabase Authentication
-6. Create the first astrologer user through Auth > Users, then map that user to the `astrologers` table using the provided SQL seed guide
-7. Fill the values in `public/site-assets/app-config.js` for the browser runtime, or migrate them to the Next.js environment variables in `.env.local`
-8. Run `npm run dev` and open `/chat`
+3. Run each file in `database/migrations/` in numeric order (see `database/migrations/README.md`)
+4. Create a storage bucket named `chat-attachments`
+5. Enable Realtime for the relevant tables (see schema comments)
+6. Enable Email/Password auth in Supabase Authentication
+7. Create the first astrologer user through Auth > Users, then map that user to the `astrologers` table — see section 8. There is **no** seeded astrologer; `astrologers.user_id` requires a real Auth user.
+8. Fill the values in `public/site-assets/app-config.js` for the browser runtime, or migrate them to the Next.js environment variables in `.env.local`
+9. Run `npm run dev` and open `/chat`
 
 ---
 
