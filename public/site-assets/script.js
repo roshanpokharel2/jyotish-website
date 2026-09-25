@@ -327,10 +327,12 @@ ne: {
   authLoginSubmit:"लगइन गर्नुहोस्", authRegisterSubmit:"खाता बनाउनुहोस्",
   authDemoBanner:"🔒 सुरक्षित Supabase खाता प्रणाली — आफ्नो email बाट दर्ता गरी पुष्टि गरेपछि login गर्नुहोस्।",
   authForgotLink:"पासवर्ड बिर्सनुभयो?", authSwitchToRegister:"खाता छैन? दर्ता गर्नुहोस्", authSwitchToLogin:"पहिले नै खाता छ? लगइन गर्नुहोस्",
+  jyotishAdmin:{title:"ज्योतिषी आवेदनहरू",none:"जाँच गर्न बाँकी कुनै आवेदन छैन।",approve:"स्वीकृत गर्नुहोस्",reject:"अस्वीकृत गर्नुहोस्",reasonPrompt:"अस्वीकृतिको कारण लेख्नुहोस्:",applied:"आवेदन मिति",fee:"शुल्क",experience:"अनुभव",done:"अद्यावधिक भयो।"},
+  jyotish:{title:"ज्योतिषीको रूपमा आवेदन",intro:"आफ्नो विवरण पठाउनुहोस्। प्रशासकले जाँच गरी स्वीकृत गरेपछि मात्र तपाईं सेवा र बुकिङ लिन सक्नुहुनेछ।",submit:"आवेदन पठाउनुहोस्",statusLabel:"आवेदनको अवस्था",reason:"कारण",bio:"परिचय",qualification:"शैक्षिक योग्यता",experience:"अनुभव (वर्ष)",specialization:"विशेषज्ञता",languages:"भाषा (अल्पविरामले छुट्याउनुहोस्)",fee:"परामर्श शुल्क (रु.)",sent:"आवेदन पठाइयो। स्वीकृतिको प्रतीक्षा गर्नुहोस्।",status:{pending_review:"जाँच भइरहेको छ",active:"स्वीकृत",rejected:"अस्वीकृत",suspended:"निलम्बित",inactive:"निष्क्रिय"}},
   myAccTitle:"मेरो खाता", myAccSub:"तपाईंको बुकिङ, कुण्डली, रिपोर्ट र भुक्तानी एकै ठाउँमा।",
   bookingsTitle:"बुकिङ रेकर्ड", bookingsSub:"बुकिङ गरेका व्यक्तिहरूका सेवा र सम्पूर्ण विवरण नामअनुसार।", bookingsPeopleLabel:"व्यक्ति", bookingsRecordsLabel:"रेकर्ड", bookingsEmpty:"अहिलेसम्म कुनै record भेटिएन।", bookingsRefresh:"रिफ्रेस", bookingsExportAll:"सबै डाउनलोड", bookingsDownloadPerson:"व्यक्तिको data डाउनलोड",
   myAccSections:["मेरो प्रोफाइल","मेरा बुकिङहरू","आगामी परामर्श","विगतका परामर्श","च्याट","मेरा प्रश्नहरू","मेरा रिपोर्टहरू","भुक्तानीहरू","सूचनाहरू"],
-  myAccDemoNote:"⚠️ यो 'मेरो खाता' पृष्ठ हाल नमूना मात्र हो — वास्तविक डेटा हेर्न लगइन प्रणाली निर्माण हुनुपर्छ।",
+  myAccDemoNote:"बुकिङ, परामर्श र भुक्तानीको विवरण ती सुविधा सक्रिय भएपछि यहाँ देखिनेछ।", myAccEmpty:"अहिलेसम्म कुनै अनुरोध पठाइएको छैन।",
   vcEyebrow:"वास्तु एनोटेसन", vcTitle:"नक्सामा प्रत्यक्ष चिन्ह लगाउनुहोस्",
   vcHint:"माथिको नक्सामा जुनसुकै ठाउँमा क्लिक गरेर पिन थप्नुहोस्, त्यसपछि कोठा/दिशा र टिप्पणी लेख्नुहोस्।",
   vcRoomLabel:"कोठा/दिशा", vcNoteLabel:"टिप्पणी", vcSaveNote:"पिन सुरक्षित गर्नुहोस्", vcDownload:"एनोटेट नक्सा डाउनलोड गर्नुहोस्",
@@ -633,10 +635,12 @@ en: {
   authLoginSubmit:"Login", authRegisterSubmit:"Create Account",
   authDemoBanner:"🔒 Secure Supabase account system — register with your email, confirm it, then sign in.",
   authForgotLink:"Forgot password?", authSwitchToRegister:"No account? Register", authSwitchToLogin:"Already have an account? Login",
+  jyotishAdmin:{title:"Jyotish Applications",none:"No applications are waiting for review.",approve:"Approve",reject:"Reject",reasonPrompt:"Reason for rejection:",applied:"Applied",fee:"Fee",experience:"Experience",done:"Updated."},
+  jyotish:{title:"Apply as a Jyotish",intro:"Send your details. You can offer services and take bookings only after an administrator verifies and approves your application.",submit:"Submit application",statusLabel:"Application status",reason:"Reason",bio:"Biography",qualification:"Qualification",experience:"Experience (years)",specialization:"Specialization",languages:"Languages (comma separated)",fee:"Consultation fee (NPR)",sent:"Application submitted. Please wait for approval.",status:{pending_review:"Under review",active:"Approved",rejected:"Rejected",suspended:"Suspended",inactive:"Inactive"}},
   myAccTitle:"My Account", myAccSub:"Your bookings, Kundali, reports and payments in one place.",
   bookingsTitle:"Booked Services", bookingsSub:"All submitted service records grouped by person.", bookingsPeopleLabel:"people", bookingsRecordsLabel:"records", bookingsEmpty:"No stored records found yet.", bookingsRefresh:"Refresh", bookingsExportAll:"Download all", bookingsDownloadPerson:"Download person data",
   myAccSections:["My Profile","My Bookings","Upcoming Consultations","Past Consultations","Chat","My Questions","My Reports","Payments","Notifications"],
-  myAccDemoNote:"⚠️ This 'My Account' page is currently a mockup only — a real login system is needed to show actual data.",
+  myAccDemoNote:"Bookings, consultations and payments will appear here as those features go live.", myAccEmpty:"No requests submitted yet.",
   vcEyebrow:"Vastu Annotation", vcTitle:"Mark Up the Plan Directly",
   vcHint:"Click anywhere on the plan above to add a pin, then write the room/direction and a note.",
   vcRoomLabel:"Room/Direction", vcNoteLabel:"Note", vcSaveNote:"Save Pin", vcDownload:"Download Annotated Plan",
@@ -938,10 +942,12 @@ hi: {
   authLoginSubmit:"लॉगिन करें", authRegisterSubmit:"खाता बनाएं",
   authDemoBanner:"🔒 सुरक्षित Supabase खाता प्रणाली — ईमेल से पंजीकरण करें, पुष्टि करें और फिर लॉगिन करें।",
   authForgotLink:"पासवर्ड भूल गए?", authSwitchToRegister:"खाता नहीं है? पंजीकरण करें", authSwitchToLogin:"पहले से खाता है? लॉगिन करें",
+  jyotishAdmin:{title:"ज्योतिषी आवेदन",none:"समीक्षा के लिए कोई आवेदन नहीं है।",approve:"स्वीकृत करें",reject:"अस्वीकृत करें",reasonPrompt:"अस्वीकृति का कारण लिखें:",applied:"आवेदन तिथि",fee:"शुल्क",experience:"अनुभव",done:"अद्यतन हो गया।"},
+  jyotish:{title:"ज्योतिषी के रूप में आवेदन",intro:"अपना विवरण भेजें। प्रशासक द्वारा जाँच और स्वीकृति के बाद ही आप सेवाएँ और बुकिंग ले सकेंगे।",submit:"आवेदन भेजें",statusLabel:"आवेदन की स्थिति",reason:"कारण",bio:"परिचय",qualification:"शैक्षिक योग्यता",experience:"अनुभव (वर्ष)",specialization:"विशेषज्ञता",languages:"भाषाएँ (अल्पविराम से अलग करें)",fee:"परामर्श शुल्क (रु.)",sent:"आवेदन भेजा गया। स्वीकृति की प्रतीक्षा करें।",status:{pending_review:"जाँच जारी है",active:"स्वीकृत",rejected:"अस्वीकृत",suspended:"निलंबित",inactive:"निष्क्रिय"}},
   myAccTitle:"मेरा खाता", myAccSub:"आपकी बुकिंग, कुंडली, रिपोर्ट एवं भुगतान एक ही स्थान पर।",
   bookingsTitle:"बुकिंग रिकॉर्ड", bookingsSub:"सभी सेवा रिकॉर्ड व्यक्ति के नाम के अनुसार समूहित हैं।", bookingsPeopleLabel:"व्यक्ति", bookingsRecordsLabel:"रिकॉर्ड", bookingsEmpty:"अभी कोई रिकॉर्ड नहीं मिला।", bookingsRefresh:"रिफ्रेश", bookingsExportAll:"सभी डाउनलोड", bookingsDownloadPerson:"व्यक्ति का data डाउनलोड",
   myAccSections:["मेरी प्रोफाइल","मेरी बुकिंग","आगामी परामर्श","पिछले परामर्श","चैट","मेरे प्रश्न","मेरी रिपोर्ट","भुगतान","सूचनाएं"],
-  myAccDemoNote:"⚠️ यह 'मेरा खाता' पृष्ठ फिलहाल केवल एक नमूना है — वास्तविक डेटा देखने के लिए लॉगिन प्रणाली बनानी होगी।",
+  myAccDemoNote:"बुकिंग, परामर्श और भुगतान का विवरण वे सुविधाएँ सक्रिय होने पर यहाँ दिखेगा।", myAccEmpty:"अभी तक कोई अनुरोध नहीं भेजा गया है।",
   vcEyebrow:"वास्तु एनोटेशन", vcTitle:"नक्शे पर सीधे चिह्न लगाएं",
   vcHint:"ऊपर दिए नक्शे पर कहीं भी क्लिक करके पिन जोड़ें, फिर कमरा/दिशा एवं टिप्पणी लिखें।",
   vcRoomLabel:"कमरा/दिशा", vcNoteLabel:"टिप्पणी", vcSaveNote:"पिन सुरक्षित करें", vcDownload:"एनोटेटेड नक्शा डाउनलोड करें",
@@ -1243,10 +1249,12 @@ sa: {
   authLoginSubmit:"प्रविश्यताम्", authRegisterSubmit:"कक्षः निर्मीयताम्",
   authDemoBanner:"🔒 सुरक्षितं Supabase-खाता-तन्त्रम् — ईमेलद्वारा नामाङ्कनं कृत्वा पुष्टिं विधाय प्रवेशं कुर्वन्तु।",
   authForgotLink:"गुप्तशब्दं विस्मृतवान्?", authSwitchToRegister:"कक्षः नास्ति? नामाङ्कनं कुर्वन्तु", authSwitchToLogin:"पूर्वमेव कक्षः अस्ति? प्रविश्यताम्",
+  jyotishAdmin:{title:"ज्योतिषिणाम् आवेदनानि",none:"परीक्षणार्थं किमपि आवेदनं नास्ति।",approve:"स्वीकरोतु",reject:"अस्वीकरोतु",reasonPrompt:"अस्वीकारस्य कारणं लिखतु:",applied:"आवेदनदिनाङ्कः",fee:"शुल्कम्",experience:"अनुभवः",done:"अद्यतनीकृतम्।"},
+  jyotish:{title:"ज्योतिषीरूपेण आवेदनम्",intro:"स्वविवरणं प्रेषयतु। प्रशासकेन परीक्षिते स्वीकृते च सति एव सेवाः आरक्षणानि च स्वीकर्तुं शक्नोति।",submit:"आवेदनं प्रेषयतु",statusLabel:"आवेदनस्य स्थितिः",reason:"कारणम्",bio:"परिचयः",qualification:"शैक्षिकयोग्यता",experience:"अनुभवः (वर्षाणि)",specialization:"विशेषज्ञता",languages:"भाषाः (अल्पविरामेन पृथक्)",fee:"परामर्शशुल्कम् (रु.)",sent:"आवेदनं प्रेषितम्। स्वीकृतेः प्रतीक्षां करोतु।",status:{pending_review:"परीक्षणे वर्तते",active:"स्वीकृतम्",rejected:"अस्वीकृतम्",suspended:"निलम्बितम्",inactive:"निष्क्रियम्"}},
   myAccTitle:"मम कक्षः", myAccSub:"भवतः आरक्षणानि, कुण्डली, प्रतिवेदनानि, भुगतानानि च एकत्र स्थाने।",
   bookingsTitle:"आरक्षण-लेखाः", bookingsSub:"व्यक्तिनामानुसारं सर्वेषां सेवाऽभिलेखानां समूहः।", bookingsPeopleLabel:"व्यक्तयः", bookingsRecordsLabel:"अभिलेखाः", bookingsEmpty:"अद्यापि कश्चित् अभिलेखः न प्राप्तः।", bookingsRefresh:"पुनः पश्यताम्", bookingsExportAll:"सर्वं डाउनलोड", bookingsDownloadPerson:"व्यक्तेः data डाउनलोड",
   myAccSections:["मम परिचयः","मम आरक्षणानि","आगामिनः परामर्शाः","गताः परामर्शाः","संभाषणम्","मम प्रश्नाः","मम प्रतिवेदनानि","भुगतानानि","सूचनाः"],
-  myAccDemoNote:"⚠️ इदं 'मम कक्षः' पृष्ठं सम्प्रति केवलं नमूना अस्ति — यथार्थदत्तांशदर्शनार्थं प्रवेशप्रणाली निर्मातव्या।",
+  myAccDemoNote:"आरक्षणानि, परामर्शाः, भुगतानानि च तेषु सुविधासु सक्रियासु सत्सु अत्र दृश्यन्ते।", myAccEmpty:"अद्यावधि किमपि अनुरोधं न प्रेषितम्।",
   vcEyebrow:"वास्तु-एनोटेशन", vcTitle:"नक्शे प्रत्यक्षं चिह्नं स्थापयन्तु",
   vcHint:"उपरिस्थे नक्शे कुत्रापि क्लिक् कृत्वा पिनं योजयन्तु, ततः कक्षं/दिशां टिप्पणीं च लिखन्तु।",
   vcRoomLabel:"कक्षः/दिशा", vcNoteLabel:"टिप्पणी", vcSaveNote:"पिनं सुरक्षितं कुर्वन्तु", vcDownload:"एनोटेट-नक्शं डाउनलोड् कुर्वन्तु",
@@ -1593,7 +1601,8 @@ function buildNav(container, isDrawer){
   items.forEach(([key,view])=>{
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = T[LANG].nav[key];
+    // Same destination either way; once signed in "Login" is just wrong.
+    b.textContent = (key === 'login' && demoLoggedIn) ? T[LANG].nav.account : T[LANG].nav[key];
     b.setAttribute('aria-current', currentView === view ? 'page' : 'false');
     if(isDrawer) b.className='nav-item';
     b.onclick = ()=>{

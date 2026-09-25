@@ -12,5 +12,8 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
+  },
+  "devDependencies": {
+    "pg": "^8.23.0"
   }
 }

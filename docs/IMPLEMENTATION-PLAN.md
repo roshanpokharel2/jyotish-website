@@ -61,8 +61,12 @@ storage bucket, and every Edge Function.
 
 Each step lists: **what**, **why**, **depends on**, **files**, **test**, **security**.
 Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
-`database/schema.sql` stays the from-scratch snapshot and is regenerated at the end of
-each step so a fresh Supabase project can be built from one file.
+`database/schema.sql` stays the original from-scratch snapshot and is **not** rewritten
+per step; a fresh project runs it once and then every migration in order. Self-asserting
+checks live in `database/tests/`.
+
+**Status:** Steps 1–6 done and applied to the live Supabase project; every test passes.
+Apply with `node scripts/db.mjs <file.sql>`.
 
 ---
 

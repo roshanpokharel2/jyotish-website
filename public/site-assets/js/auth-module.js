@@ -153,12 +153,212 @@ async function demoLogout(){
   authTab = 'login';
 }
 
-function renderMyAccount(){
+/* ============================================================
+   MY ACCOUNT
+   One tabbed view instead of a stack of panels: a customer sees two tabs, an
+   applicant three, staff four. Tab visibility is presentation only — every panel
+   below is protected by RLS, and the queue's approve/reject writes are accepted
+   only from moderator/admin/super_admin.
+============================================================ */
+
+let accTab = 'profile';
+let accRole = null;
+let jyotishRecord = null;
+
+function setAccTab(tab){
+  accTab = tab;
+  renderMyAccount();
+}
+
+async function loadAccountContext(){
+  const client = getMainSupabase();
+  const [me, jyotish] = await Promise.all([
+    client.from('users').select('role').eq('id', mainAuthUser.id).maybeSingle(),
+    client.from('astrologers')
+      .select('id,name,status,rejection_reason,consultation_fee')
+      .eq('user_id', mainAuthUser.id).maybeSingle()
+  ]);
+  accRole = me.data?.role || null;
+  jyotishRecord = jyotish.data || null;
+}
+
+function accIsStaff(){
+  return ['moderator','support','finance','admin','super_admin'].includes(accRole);
+}
+
+async function renderMyAccount(){
   const t = T[LANG];
   const grid = document.getElementById('myAccGrid');
+  const client = getMainSupabase();
   if(!grid) return;
-  const icons = ['book','chart','clock','clock','briefcase','star','chart','walletIcon','shield'];
-  grid.innerHTML = t.myAccSections.map((s,i)=>`
-    <div class="service-card"><div class="service-icon">${ICONS[icons[i%icons.length]] || ICONS.book}</div><h4 style="font-size:.95rem;">${s}</h4></div>
-  `).join('');
+  if(!client || !mainAuthUser){ grid.innerHTML = ''; return; }
+
+  // The container is a 3-up card grid in the markup; the tabbed view owns its own layout.
+  grid.className = '';
+
+  await loadAccountContext();
+
+  const tabs = [
+    ['profile', t.myAccSections[0]],
+    ['requests', t.bookingsTitle],
+    ['jyotish', jyotishRecord ? t.jyotish.statusLabel : t.jyotish.title]
+  ];
+  if(accIsStaff()) tabs.push(['applications', t.jyotishAdmin.title]);
+  if(!tabs.some(tab => tab[0] === accTab)) accTab = 'profile';
+
+  grid.innerHTML = `
+    <div class="faq-tabs" style="flex-wrap:wrap;">
+      ${tabs.map(tab => `<button class="faq-tab${tab[0]===accTab?' active':''}" onclick="setAccTab('${tab[0]}')">${escapeHtml(tab[1])}</button>`).join('')}
+    </div>
+    <div class="booking-panel" style="margin-top:18px;" id="accPanelBody"></div>`;
+
+  const body = document.getElementById('accPanelBody');
+  if(accTab === 'profile') return renderAccountProfile(body);
+  if(accTab === 'requests') return renderAccountRequests(body);
+  if(accTab === 'jyotish') return renderJyotishPanel(body);
+  if(accTab === 'applications') return renderJyotishApplicationsQueue(body);
+}
+
+function renderAccountProfile(body){
+  const t = T[LANG];
+  const profile = mainCustomer || {};
+  body.innerHTML = [
+    [t.authFullName, profile.full_name],
+    [t.authEmailLabel, mainAuthUser.email],
+    [t.authPhoneLabel, profile.phone]
+  ].map(row => `<div class="review-row"><span>${escapeHtml(row[0])}</span><b>${escapeHtml(row[1] || '—')}</b></div>`).join('');
+}
+
+async function renderAccountRequests(body){
+  const t = T[LANG];
+  const { data, error } = await getMainSupabase()
+    .from('service_requests')
+    .select('id,request_type,status,created_at')
+    .order('created_at', {ascending:false})
+    .limit(10);
+
+  if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
+  if(!data || !data.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.myAccEmpty)}</p></div>`; return; }
+
+  body.innerHTML = data.map(row => `
+    <div class="review-row">
+      <span><b>${escapeHtml(row.request_type)}</b><br><small>${escapeHtml(new Date(row.created_at).toLocaleDateString())}</small></span>
+      <b>${escapeHtml(row.status)}</b>
+    </div>`).join('');
+}
+
+/* ============================================================
+   JYOTISH APPLICATION
+   The application always lands in pending_review — guard_astrologer_status()
+   forces it — so nothing here is a security control. This form only has to be
+   honest about what happens next.
+============================================================ */
+
+function renderJyotishPanel(body){
+  const t = T[LANG].jyotish;
+
+  if(jyotishRecord){
+    body.innerHTML = `
+      <div class="review-row"><span>${escapeHtml(t.statusLabel)}</span><b>${escapeHtml(t.status[jyotishRecord.status] || jyotishRecord.status)}</b></div>
+      <div class="review-row"><span>${escapeHtml(T[LANG].authFullName)}</span><b>${escapeHtml(jyotishRecord.name)}</b></div>
+      <div class="review-row"><span>${escapeHtml(t.fee)}</span><b>${escapeHtml(jyotishRecord.consultation_fee)}</b></div>
+      ${jyotishRecord.rejection_reason ? `<div class="review-row"><span>${escapeHtml(t.reason)}</span><b>${escapeHtml(jyotishRecord.rejection_reason)}</b></div>` : ''}`;
+    return;
+  }
+
+  body.innerHTML = `
+    <p style="font-size:.88rem;color:var(--ink-soft);margin-top:0;">${escapeHtml(t.intro)}</p>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(T[LANG].authFullName)} *</label><input id="jyName" value="${escapeHtml(mainCustomer?.full_name || '')}"></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.bio)} *</label><textarea rows="4" id="jyBio"></textarea></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.qualification)}</label><input id="jyQualification"></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.experience)}</label><input type="number" id="jyExperience" min="0" max="80" value="0"></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.specialization)}</label><input id="jySpecialization"></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.languages)}</label><input id="jyLanguages" value="नेपाली"></div>
+    <div class="field" style="margin-top:12px;"><label>${escapeHtml(t.fee)} *</label><input type="number" id="jyFee" min="0" value="1000"></div>
+    <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="submitJyotishApplication()">${escapeHtml(t.submit)}</button>
+    <div id="jyApplyMsg"></div>`;
+}
+
+async function submitJyotishApplication(){
+  const t = T[LANG].jyotish;
+  const msg = document.getElementById('jyApplyMsg');
+  const name = document.getElementById('jyName')?.value.trim();
+  const biography = document.getElementById('jyBio')?.value.trim();
+  const fee = Number(document.getElementById('jyFee')?.value);
+  const experience = Number(document.getElementById('jyExperience')?.value);
+
+  if(!name || !biography || !Number.isFinite(fee) || fee < 0){
+    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:14px;">${escapeHtml(T[LANG].validationRequired)}</div>`;
+    return;
+  }
+  if(!Number.isInteger(experience) || experience < 0 || experience > 80){
+    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:14px;">${escapeHtml(t.experience)}: 0–80</div>`;
+    return;
+  }
+
+  const languages = (document.getElementById('jyLanguages')?.value || '').split(',').map(value => value.trim()).filter(Boolean);
+
+  const { error } = await getMainSupabase().from('astrologers').insert({
+    user_id: mainAuthUser.id,
+    name,
+    biography,
+    qualification: document.getElementById('jyQualification')?.value.trim() || null,
+    experience_years: experience,
+    specialization: document.getElementById('jySpecialization')?.value.trim() || null,
+    languages: languages.length ? languages : ['नेपाली'],
+    consultation_fee: fee
+  });
+
+  if(error){
+    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:14px;">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  if(typeof showToast === 'function') showToast(t.sent);
+  renderMyAccount();
+}
+
+/* ============================================================
+   JYOTISH APPLICATIONS QUEUE (staff)
+   A stand-in for the /admin dashboard in Step 20.
+============================================================ */
+
+async function renderJyotishApplicationsQueue(body){
+  const t = T[LANG].jyotishAdmin;
+  const { data, error } = await getMainSupabase()
+    .from('astrologers')
+    .select('id,name,qualification,experience_years,consultation_fee,applied_at')
+    .eq('status', 'pending_review')
+    .order('applied_at');
+
+  if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
+  if(!data || !data.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
+
+  body.innerHTML = data.map(row => `
+    <div class="review-row" style="align-items:flex-start;gap:12px;">
+      <span>
+        <b>${escapeHtml(row.name)}</b><br>
+        <small>${escapeHtml(row.qualification || '—')}</small><br>
+        <small>${escapeHtml(t.experience)}: ${escapeHtml(row.experience_years ?? 0)} · ${escapeHtml(t.fee)}: ${escapeHtml(row.consultation_fee)} · ${escapeHtml(t.applied)}: ${escapeHtml(new Date(row.applied_at).toLocaleDateString())}</small>
+      </span>
+      <span style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-gold" onclick="reviewJyotishApplication('${escapeHtml(row.id)}','active')">${escapeHtml(t.approve)}</button>
+        <button class="btn btn-ghost" onclick="reviewJyotishApplication('${escapeHtml(row.id)}','rejected')">${escapeHtml(t.reject)}</button>
+      </span>
+    </div>`).join('');
+}
+
+async function reviewJyotishApplication(id, status){
+  const t = T[LANG].jyotishAdmin;
+  const patch = { status };
+  if(status === 'rejected'){
+    // The database refuses a rejection with no reason, so ask rather than surface a
+    // constraint violation.
+    const reason = window.prompt(t.reasonPrompt);
+    if(!reason || !reason.trim()) return;
+    patch.rejection_reason = reason.trim();
+  }
+
+  const { error } = await getMainSupabase().from('astrologers').update(patch).eq('id', id);
+  if(typeof showToast === 'function') showToast(error ? error.message : t.done);
+  renderMyAccount();
 }

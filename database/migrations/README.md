@@ -18,3 +18,41 @@ Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric o
 | File | Step | What |
 |---|---|---|
 | `0001_baseline_fixes.sql` | 2 | Phantom seed astrologer removed, `updated_at` on payments/notifications/availability, indexes for the booking and payment-verification queries |
+| `0002_roles.sql` | 3 | Canonical role set, `has_role()` / `is_staff()`, trigger closing the role self-promotion hole, inlined admin checks replaced |
+| `0003_platform_settings.sql` | 4 | `platform_settings` + `setting()` / `setting_num()`, seeded with commission, reservation window, join window, payout floor, eSewa display values |
+| `0004_audit_log.sql` | 5 | Append-only `audit_log`, `record_audit()`, immutability trigger, role changes logged |
+| `0005_jyotish_verification.sql` | 6 | Practitioner lifecycle, status guard trigger, staff visibility, private `jyotish-documents` bucket |
+
+## Function privileges — read this before adding a `security definer` function
+
+Supabase's default privileges grant `EXECUTE` on every new function in `public` to
+`anon` and `authenticated` **by name**. `revoke all ... from public` does **not** remove
+those grants. A privileged function left at the default is callable by any visitor over
+`/rest/v1/rpc/<name>`, bypassing RLS, since a definer function runs as its owner.
+
+Every new privileged function must therefore do:
+
+```sql
+revoke all on function public.thing(args) from public, anon, authenticated;
+grant execute on function public.thing(args) to service_role;  -- plus authenticated only if truly needed
+```
+
+Trigger functions (returning `trigger`) are exempt: Postgres refuses to call them
+directly. Audit the current state with:
+
+```sql
+select proname, prosecdef, proacl from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';
+```
+
+## Applying from this machine
+
+`node scripts/db.mjs <file.sql> [...]` applies files in order against `SUPABASE_DB_URL`
+from `.env` (session pooler URI, port 5432). Test fixtures write to `auth.users`, so the
+JWT claims they set must include both `sub` and `role` to match a real access token.
+
+## Tests
+
+`../tests/NNNN_*_test.sql` — paste into the SQL editor and run. Each wraps itself in a
+transaction and rolls back, so it is safe against a database with real data. A passing
+run ends with a `NOTICE`; a failure raises.

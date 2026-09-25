@@ -101,6 +101,22 @@ a JWT claim, because a claim is influenced by the client.
 
 ---
 
+## AD-9b — Role value is `jyotish`, table stays `astrologers`
+
+`public.users.role` uses the architecture's vocabulary
+(`customer | jyotish | moderator | support | finance | admin | super_admin`), while the
+practitioner table keeps the name `astrologers` for the reasons in AD-1. The mismatch is
+deliberate: nothing in the frontend reads `users.role`, so migrating the value cost
+nothing, whereas renaming the table breaks seven foreign keys.
+
+## AD-9c — Column-level protection needs a trigger, not a policy
+
+RLS grants or denies a row, never a column. `users` must stay self-updatable (profile
+edits) while `role` must not be, so `trg_users_guard_role` rejects a role change unless
+the caller is an admin or has no JWT at all (service role / Edge Function / migration).
+The same pattern is reused for `astrologers.status` in Step 6 and for any other column a
+user owns the row of but must not set.
+
 ## AD-10 — `service_requests` is not the booking system
 
 The current browser booking flow writes generic `service_requests` rows. That stays as
