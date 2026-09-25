@@ -117,6 +117,14 @@ the caller is an admin or has no JWT at all (service role / Edge Function / migr
 The same pattern is reused for `astrologers.status` in Step 6 and for any other column a
 user owns the row of but must not set.
 
+**Amended by 0006:** account holders no longer own UPDATE on `users` at all (nothing on
+the row is theirs to edit). The trigger stays as the second layer and now also
+separates admins from super admins: only `super_admin` grants or removes `admin` /
+`super_admin`. `customer → jyotish` is allowed for whoever approves a practitioner,
+because it only passes once that practitioner's row is `active`, which only a reviewer
+can set. Side effects that depend on a guarded row's *new* state (the approval
+promotion) belong in an AFTER trigger; the BEFORE trigger cannot see the row as written.
+
 ## AD-10 — `service_requests` is not the booking system
 
 The current browser booking flow writes generic `service_requests` rows. That stays as

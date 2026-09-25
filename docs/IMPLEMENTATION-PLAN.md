@@ -65,8 +65,12 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done and applied to the live Supabase project; every test passes.
-Apply with `node scripts/db.mjs <file.sql>`.
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoint A done,
+see below). The project in `.env` is the **development** database; 0001–0006 are applied
+there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+to a production project.
+Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
+`SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
 
 ---
 
@@ -211,6 +215,38 @@ cannot select it; attempt self-approval via the client → denied by trigger.
 
 **Security** The status trigger is the control. RLS alone is insufficient because the
 practitioner legitimately owns UPDATE on their own row.
+
+---
+
+### Phase 1 — Security hardening (before Step 7)
+
+Fixes found while verifying Steps 1–6 against the database. One checkpoint per
+migration, each tested in development before the next starts.
+
+#### Checkpoint A — `0006_users_hardening.sql` ✅ (applied to development)
+
+**What**
+- Dropped `"users can update own profile"`. The row holds only the mirrored email and
+  the staff-assigned role, and no client code updates it.
+- Role rules in `guard_user_role_change()`: granting or removing `admin` /
+  `super_admin` needs `super_admin`; other changes need `admin`+; `customer → jyotish`
+  is allowed when the user has an `active` practitioner row (the approval path);
+  no JWT (service role) may do anything. Every change is audited.
+- Moved the approval promotion out of the BEFORE trigger `guard_astrologer_status()`
+  into a new AFTER trigger `trg_astrologers_promote`, so the row is already active when
+  the role guard checks it.
+- `scripts/db.mjs`: production guard (`SUPABASE_DB_TARGET`, project-ref cross-check),
+  BOM stripping.
+
+**Why** Before this, a moderator's approval raised `FORBIDDEN` (reproduced in dev), any
+admin could make themselves `super_admin`, and account holders could rewrite
+`users.email`.
+
+**Test** `database/tests/0006_users_hardening_test.sql`, run as `authenticated` with a
+JWT: fails on the pre-0006 schema, passes after; 0002–0005 tests still pass; 0006 is
+re-runnable.
+
+**Rollback** Fix forward. Undoing 0006 would reopen the holes above.
 
 ---
 

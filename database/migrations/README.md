@@ -22,6 +22,7 @@ Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric o
 | `0003_platform_settings.sql` | 4 | `platform_settings` + `setting()` / `setting_num()`, seeded with commission, reservation window, join window, payout floor, eSewa display values |
 | `0004_audit_log.sql` | 5 | Append-only `audit_log`, `record_audit()`, immutability trigger, role changes logged |
 | `0005_jyotish_verification.sql` | 6 | Practitioner lifecycle, status guard trigger, staff visibility, private `jyotish-documents` bucket |
+| `0006_users_hardening.sql` | Phase 1 A | No self-update on `users`; only `super_admin` grants admin roles; approval promotion moved to an AFTER trigger so moderators can approve. **Supersedes** the function bodies from 0002/0004/0005 — re-run 0006 after any of them |
 
 ## Function privileges — read this before adding a `security definer` function
 
@@ -48,11 +49,14 @@ select proname, prosecdef, proacl from pg_proc p
 ## Applying from this machine
 
 `node scripts/db.mjs <file.sql> [...]` applies files in order against `SUPABASE_DB_URL`
-from `.env` (session pooler URI, port 5432). Test fixtures write to `auth.users`, so the
+from `.env` (session pooler URI, port 5432). It refuses to run unless `.env` sets
+`SUPABASE_DB_TARGET=development` and `SUPABASE_DB_URL` is the same project as
+`SUPABASE_URL`. A production run needs `SUPABASE_DB_TARGET=production` **and** the
+`--production` flag. Tests write (then roll back), so they are guarded too. Test fixtures write to `auth.users`, so the
 JWT claims they set must include both `sub` and `role` to match a real access token.
 
 ## Tests
 
-`../tests/NNNN_*_test.sql` — paste into the SQL editor and run. Each wraps itself in a
+`../tests/NNNN_*_test.sql` — run with `node scripts/db.mjs`, or paste into the SQL editor. Each wraps itself in a
 transaction and rolls back, so it is safe against a database with real data. A passing
 run ends with a `NOTICE`; a failure raises.
