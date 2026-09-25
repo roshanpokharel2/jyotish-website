@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoint A done,
-see below). The project in `.env` is the **development** database; 0001–0006 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–B
+done, see below). The project in `.env` is the **development** database; 0001–0007 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -247,6 +247,33 @@ JWT: fails on the pre-0006 schema, passes after; 0002–0005 tests still pass; 0
 re-runnable.
 
 **Rollback** Fix forward. Undoing 0006 would reopen the holes above.
+
+#### Checkpoint B — `0007_astrologer_protected_fields.sql` ✅ (applied to development)
+
+**What** `guard_astrologer_status()` now protects more than `status`:
+- On your **own** practitioner row you are never a reviewer, whatever your role; only
+  the service role is exempt.
+- A self-service insert is forced to `pending_review` with `reviewed_by`, `reviewed_at`,
+  `rejection_reason`, `consultant_id` cleared and `applied_at = now()`. The proposed
+  `consultation_fee` is kept for the reviewer to see.
+- Afterwards a non-reviewer cannot change `id`, `user_id`, `consultant_id`,
+  `consultation_fee`, `applied_at`, `reviewed_by`, `reviewed_at`, `rejection_reason`,
+  `created_at` or `status`. `verification_documents` is editable only while
+  `pending_review`. Profile fields (bio, languages, photo…) stay self-editable.
+
+**Why** Reproduced in dev: an applicant raised their own fee after applying, forged a
+reviewer stamp and a back-dated `applied_at`, and a moderator approved their own
+application. The existing super_admin's practitioner row was self-approved the same way
+before this fix (audit entry `jyotish.status_changed` with that super_admin as actor).
+
+**Test** `database/tests/0007_astrologer_protected_fields_test.sql`: fails before 0007,
+passes after; 0002–0006 still pass; 0007 is re-runnable.
+
+**Client impact** None for the application form or the staff queue. A staff member who
+is also a practitioner can no longer approve or re-price their own row from the UI —
+another reviewer or the SQL editor does it.
+
+**Rollback** Fix forward.
 
 ---
 

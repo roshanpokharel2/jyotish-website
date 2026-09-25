@@ -148,3 +148,19 @@ automated payouts, split payments, direct customer-to-jyotish transfers.
 
 `knowledge_items` carries `author_id` from the start so attribution and revenue sharing
 remain possible later without a migration.
+
+---
+
+## AD-13 — Practitioners propose a price; they do not set it
+
+`astrologers.consultation_fee` is accepted from the applicant once, on the application,
+so the reviewer sees what they are asking. After that only a reviewer on someone else's
+row, or the service role, may change it (0007). The long-term source of truth for price
+is the per-practitioner `services` catalog from Step 7 (name, type, duration, price,
+currency, active state); `consultation_fee` is then a legacy display value. A
+practitioner may later *request* a price change, but the published price follows the
+platform's rules, never a direct self-edit.
+
+Related rule from the same migration: **nobody reviews their own practitioner row**,
+whatever their role. Approval is a separation-of-duties control, so a staff member who
+also practises needs a second reviewer.
