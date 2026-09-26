@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–F
-done, see below). The project in `.env` is the **development** database; 0001–0011 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–G
+done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -378,6 +378,34 @@ The size and type limits trust the declared `Content-Type`; checking what the fi
 really contains is a server-side job if uploads move behind the server.
 
 **Rollback** Fix forward.
+
+#### Checkpoint G — `0012_schema_migrations.sql` + `scripts/db.mjs` ✅ (applied to development)
+
+**What**
+- `public.schema_migrations (version, name, applied_at, applied_by)`: RLS on, no
+  grants to `anon` / `authenticated`. From 0012 on, every migration inserts its own row
+  inside its own transaction, so a duplicate fails and rolls back — also from the SQL editor.
+- 0001–0011 are **not** recorded: how and when each reached a given database is not
+  known, so no history is invented.
+- `db.mjs` refuses, before running: an already recorded migration; 0001–0011 once
+  tracking exists; out-of-order or gapped migrations; a migration without its own
+  `schema_migrations` insert; a concurrent run (advisory lock). `--status` lists state.
+
+**Why** Nothing recorded what a database had, and "re-runnable" was not safe: re-running
+0005 would bring back the guard 0006/0007 replaced. Reproduced in dev before 0012: the
+runner re-applied 0011 without objection.
+
+**Test** `database/tests/0012_schema_migrations_test.sql`: fails before 0012 (no table),
+passes after (0012 recorded, nothing below it, duplicate and malformed versions refused,
+no API read/write). Runner exercised in dev: duplicate 0012 → refused; 0005 and 0011 →
+refused; 0013 before 0012 → refused; gap → refused; migration without its insert →
+refused; raw re-run of 0012 through SQL → rolled back on the primary key; second runner
+while one holds the lock → refused (exit 4). 0002–0011 tests still pass.
+
+**Not done here** The fresh-install path (`schema.sql` + 0001–0012 on an empty project)
+is still unverified; it needs a second throwaway project.
+
+**Rollback** Fix forward. Dropping the table only removes the protection.
 
 ---
 

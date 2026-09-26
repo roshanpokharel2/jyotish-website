@@ -4,14 +4,21 @@ Numbered, additive SQL applied in order on top of `../schema.sql`.
 
 - `schema.sql` is the from-scratch snapshot. A brand-new Supabase project runs it once,
   then every migration in order.
-- Migrations are **additive and re-runnable**: `add column if not exists`,
+- Migrations are **additive**: `add column if not exists`,
   `create index if not exists`, `drop trigger if exists` before `create trigger`.
   Never edit a migration that has already been applied to a live database — add a new one.
+- **From 0012 on, each migration records itself** as its last statement, inside its own
+  `begin … commit`:
+  `insert into public.schema_migrations (version, name) values ('NNNN', '<name>');`
+  A second application then fails on the primary key and rolls back completely.
+  0001–0011 predate tracking and have no rows; none are invented for them.
 - Each migration ends with a commented verification query block. Run it after applying.
 
 ## Applying
 
-Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric order.
+Use `node scripts/db.mjs` (below). The SQL editor still works for a new migration — the
+self-record makes a duplicate fail — but it skips the runner's order checks.
+`node scripts/db.mjs --status` lists what this database has.
 
 ## Files
 
@@ -28,6 +35,7 @@ Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric o
 | `0009_audit_log_actor_delete.sql` | Phase 1 D | `audit_log.actor_user_id` is no longer a foreign key, so users who acted can be deleted and the log keeps their id |
 | `0010_chat_rls.sql` | Phase 1 E | Chat policies scoped to the specific conversation via `is_chat_participant()`; text-only browser posts, no message edits; attachment rows server-only; one open conversation per pair |
 | `0011_storage_buckets.sql` | Phase 1 F | `chat-attachments` / `vastu-files` created; all buckets private, 10 MB, JPEG/PNG/PDF; no browser chat uploads; Vastu uploads tied to own project; only reviewers read credential documents |
+| `0012_schema_migrations.sql` | Phase 1 G | `schema_migrations` table (no API access); migrations from here on record themselves; 0001–0011 deliberately not recorded |
 
 ## Function privileges — read this before adding a `security definer` function
 
@@ -62,7 +70,14 @@ select proname, prosecdef, proacl from pg_proc p
 from `.env` (session pooler URI, port 5432). It refuses to run unless `.env` sets
 `SUPABASE_DB_TARGET=development` and `SUPABASE_DB_URL` is the same project as
 `SUPABASE_URL`. A production run needs `SUPABASE_DB_TARGET=production` **and** the
-`--production` flag. Tests write (then roll back), so they are guarded too. Test fixtures write to `auth.users`, so the
+`--production` flag. Tests write (then roll back), so they are guarded too.
+
+For files in `database/migrations/` the runner also refuses (before running anything):
+a migration already recorded; 0001–0011 once `schema_migrations` exists (re-running an
+old file can undo a later fix — 0006/0007 replace earlier function bodies); a migration
+from 0013 on before 0012, or with an earlier one still unapplied; a migration that does
+not contain its own `schema_migrations` insert; and a second concurrent run. On a fresh
+database (no `schema_migrations` yet) `schema.sql` and 0001–0011 run as before. Test fixtures write to `auth.users`, so the
 JWT claims they set must include both `sub` and `role` to match a real access token.
 
 ## Tests

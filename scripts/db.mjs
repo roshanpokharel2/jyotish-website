@@ -2,13 +2,14 @@
 //
 //   node scripts/db.mjs database/schema.sql database/migrations/0001_baseline_fixes.sql
 //   node scripts/db.mjs database/tests/0002_roles_test.sql
+//   node scripts/db.mjs --status        (which migrations this database has)
 //
 // Reads SUPABASE_DB_URL and SUPABASE_DB_TARGET from .env (Dashboard > Project
 // Settings > Database > Connection string > URI). Refuses to run unless the target
 // is declared "development" (see the guard below). Each file runs as one simple query, so a file that
 // wraps itself in begin/commit or begin/rollback behaves exactly as written.
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import pg from 'pg';
 
 const env = Object.fromEntries(
@@ -46,9 +47,10 @@ if (!urlRef || !dbRef || (dbRef[1] ?? dbRef[2]) !== urlRef) {
 }
 console.log(`target: ${target} (project ${urlRef})`);
 
-const files = args.filter((a) => a !== '--production');
-if (!files.length) {
-  console.error('usage: node scripts/db.mjs <file.sql> [...]');
+const wantsStatus = args.includes('--status');
+const files = args.filter((a) => a !== '--production' && a !== '--status');
+if (!files.length && !wantsStatus) {
+  console.error('usage: node scripts/db.mjs <file.sql> [...]   |   node scripts/db.mjs --status');
   process.exit(2);
 }
 
@@ -57,11 +59,81 @@ client.on('notice', (n) => console.log(`  NOTICE: ${n.message}`));
 
 await client.connect();
 
+// Migration tracking (0012). From 0012 on, each migration records itself in
+// public.schema_migrations inside its own transaction. 0001-0011 predate tracking and
+// are not recorded, so once the table exists they are refused: re-running an old file
+// can undo a later fix (0006/0007 replace earlier function bodies).
+const TRACKING_FROM = '0012';
+const migrationsDir = new URL('../database/migrations/', import.meta.url);
+const versionOf = (file) => /(?:^|[\\/])migrations[\\/](\d{4})_[^\\/]+\.sql$/.exec(file)?.[1];
+const allMigrations = readdirSync(migrationsDir).filter((f) => /^\d{4}_.+\.sql$/.test(f)).sort();
+
+let tracked = false;
+let recorded = new Map();
+const loadRecorded = async () => {
+  tracked = (await client.query(`select to_regclass('public.schema_migrations') is not null as t`)).rows[0].t;
+  recorded = new Map(tracked
+    ? (await client.query('select version, applied_at from public.schema_migrations')).rows.map((r) => [r.version, r.applied_at])
+    : []);
+};
+await loadRecorded();
+
+if (wantsStatus) {
+  console.log(tracked ? '' : '\nschema_migrations does not exist yet (0012 not applied)');
+  for (const f of allMigrations) {
+    const v = f.slice(0, 4);
+    const state = v < TRACKING_FROM ? 'pre-tracking (not recorded)'
+      : recorded.has(v) ? `applied ${recorded.get(v).toISOString()}` : 'PENDING';
+    console.log(`  ${f.padEnd(44)} ${state}`);
+  }
+  await client.end();
+  process.exit(0);
+}
+
+// Why a migration must not run now, or null. Checked just before each file, so a
+// batch like "0013 0014" works in order.
+const refusal = (file, sql) => {
+  const v = versionOf(file);
+  if (!v) return null; // tests, schema.sql, probes: not tracked
+  if (v < TRACKING_FROM) {
+    return tracked
+      ? `${v} predates tracking and this database is already past it; re-running it can undo later fixes`
+      : null; // fresh install, before 0012
+  }
+  if (recorded.has(v)) return `${v} is already applied (${recorded.get(v).toISOString()})`;
+  if (!tracked && v !== TRACKING_FROM) return `apply ${TRACKING_FROM}_schema_migrations.sql first`;
+  const missing = allMigrations.map((f) => f.slice(0, 4)).filter((m) => m >= TRACKING_FROM && m < v && !recorded.has(m));
+  if (missing.length) return `apply ${missing.join(', ')} first`;
+  if (!new RegExp(`insert\\s+into\\s+public\\.schema_migrations[^;]*'${v}'`, 'i').test(sql)) {
+    return `${v} does not record itself (insert into public.schema_migrations ... '${v}' ...)`;
+  }
+  return null;
+};
+
+// One runner at a time, so two terminals cannot both pass the checks above.
+if (!(await client.query(`select pg_try_advisory_lock(hashtext('scripts/db.mjs')) as ok`)).rows[0].ok) {
+  console.error('REFUSED: another scripts/db.mjs run holds the lock');
+  await client.end();
+  process.exit(4);
+}
+
 let failed = false;
 for (const file of files) {
   process.stdout.write(`\n== ${file}\n`);
+  const sql = readFileSync(file, 'utf8').replace(/^﻿/, '');
+  const why = refusal(file, sql);
+  if (why) {
+    failed = true;
+    console.error(`  REFUSED: ${why}`);
+    break;
+  }
   try {
-    await client.query(readFileSync(file, 'utf8').replace(/^﻿/, ''));
+    await client.query(sql);
+    const v = versionOf(file);
+    if (v >= TRACKING_FROM) {
+      await loadRecorded();
+      if (!recorded.has(v)) throw new Error(`${v} ran but is not recorded in schema_migrations`);
+    }
     console.log('  ok');
   } catch (error) {
     failed = true;

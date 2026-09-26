@@ -187,3 +187,14 @@ conversation with any *active* practitioner. Once bookings and payments exist,
 consultation chat will be tied to a booking/consultation relationship; the
 `booking_id` / `consultation_id` columns and the index that only limits *general*
 conversations are there for that. Do not let this rule become permanent by default.
+
+---
+
+## AD-15 — Migration history: our own table, real applications only
+
+`public.schema_migrations` (0012) is written by each migration itself, not by the
+runner, so the record and the change commit or roll back together and the SQL editor is
+covered too. It is not Supabase CLI's `supabase_migrations` schema — there is one
+migration system, `database/migrations` + `scripts/db.mjs`. History starts at 0012;
+0001–0011 are never back-filled, because a row claiming an application nobody observed
+is worse than no row.
