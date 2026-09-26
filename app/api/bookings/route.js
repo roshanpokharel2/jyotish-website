@@ -68,7 +68,8 @@ export const POST = route(async (request) => {
   const person = readSubject(subject);
   if (!user.customerId) throw new HttpError(403, 'no_customer', 'Only customers can book a consultation.');
 
-  const { data: booking, error } = await adminClient().rpc('create_booking', {
+  const admin = adminClient();
+  const { data: booking, error } = await admin.rpc('create_booking', {
     p_customer: user.customerId,
     p_astrologer: astrologerId,
     p_service: serviceId,
@@ -80,6 +81,10 @@ export const POST = route(async (request) => {
   if (refusal) throw new HttpError(...refusal);
   if (error) throw error;
 
+  // The booking opens its own payment (0018); the form needs its id for the
+  // proof upload step that follows.
+  const { data: pay } = await admin.from('payments').select('id').eq('booking_id', booking.id).maybeSingle();
+
   // The commission snapshot is the platform's business, not the customer's.
   const { id, status, service_id, astrologer_id, scheduled_at, ends_at, hold_expires_at,
     consultation_mode, price_snapshot, currency } = booking;
@@ -87,7 +92,7 @@ export const POST = route(async (request) => {
     booking: {
       id, status, serviceId: service_id, astrologerId: astrologer_id, startsAt: scheduled_at, endsAt: ends_at,
       holdExpiresAt: hold_expires_at, mode: consultation_mode, price: price_snapshot, currency,
-      notes: booking.notes, subject: booking.subject,
+      notes: booking.notes, subject: booking.subject, paymentId: pay?.id ?? null,
     },
   };
 });

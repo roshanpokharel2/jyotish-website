@@ -252,20 +252,50 @@ function renderAccountProfile(body){
 
 async function renderAccountRequests(body){
   const t = T[LANG];
-  const { data, error } = await getMainSupabase()
-    .from('service_requests')
-    .select('id,request_type,status,created_at')
-    .order('created_at', {ascending:false})
-    .limit(10);
+  const client = getMainSupabase();
+  // Bookings with their payment status (both readable for one's own rows), plus
+  // the older service requests below them.
+  const [bookings, requests] = await Promise.all([
+    client.from('bookings')
+      .select('id,scheduled_at,status,price_snapshot,currency,astrologer_id,services(name),payments(status)')
+      .order('scheduled_at', { ascending:false }).limit(20),
+    client.from('service_requests')
+      .select('id,request_type,status,created_at')
+      .order('created_at', {ascending:false})
+      .limit(10)
+  ]);
 
+  if(bookings.error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(bookings.error.message)}</p></div>`; return; }
+
+  let html = '';
+  if(bookings.data?.length){
+    let names = {};
+    try{
+      const { data } = await client.rpc('active_practitioners');
+      names = Object.fromEntries((data ?? []).map(p => [p.id, p.name]));
+    } catch(err){ console.warn('Practitioner names could not be loaded:', err); }
+    html += bookings.data.map(row => {
+      const pay = row.payments?.[0]?.status;
+      const when = new Date(row.scheduled_at).toLocaleString();
+      return `
+      <div class="review-row">
+        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small></span>
+        <b>${escapeHtml(t.pay.st[pay] || pay || '—')}</b>
+      </div>`;
+    }).join('');
+  }
+
+  const { data, error } = requests;
   if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
-  if(!data || !data.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.myAccEmpty)}</p></div>`; return; }
-
-  body.innerHTML = data.map(row => `
+  if(data?.length){
+    html += data.map(row => `
     <div class="review-row">
       <span><b>${escapeHtml(row.request_type)}</b><br><small>${escapeHtml(new Date(row.created_at).toLocaleDateString())}</small></span>
       <b>${escapeHtml(row.status)}</b>
     </div>`).join('');
+  }
+
+  body.innerHTML = html || `<div class="empty-box"><p>${escapeHtml(t.myAccEmpty)}</p></div>`;
 }
 
 /* ============================================================

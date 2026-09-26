@@ -154,8 +154,94 @@ function renderBookingConfirmed(t){
     <div class="booking-id">${t.referenceLabel}: ${escapeHtml(b.id.slice(0,8).toUpperCase())}</div>
     <p style="margin-top:12px;font-weight:600;">${escapeHtml(bookingMethodLabel(t))} • ${escapeHtml(when)} • ${escapeHtml(bookingPrice(b.price, b.currency))}</p>
     <div class="disclaimer-box" style="text-align:left;margin:14px 0;">${escapeHtml(t.holdNote.replace('{time}', holdUntil))}</div>
+    ${renderBookingPay(t, b)}
     <div style="margin-top:20px;display:flex;justify-content:center;"><button class="btn btn-ghost" onclick="resetBooking()">${t.newBooking}</button></div>
   </div>`;
+}
+
+/* ============================================================
+   PAYMENT STEP
+   The booking only holds the slot; this collects the eSewa screenshot and
+   posts it to /api/payments/:id/proof, which freezes the hold until staff
+   review it. The account details are public platform settings, read straight
+   from the database like prices and free times.
+============================================================ */
+
+const payData = { settings:null, pending:false, uploading:false, file:null, fileName:null, reference:'', _error:null };
+
+function bookingLoadPaySettings(){
+  if(payData.settings || payData.pending) return;
+  payData.pending = true;
+  bookingClient().from('platform_settings').select('key,value').in('key', ['esewa_account_label','esewa_account_id','esewa_qr_path'])
+    .then(({data, error})=>{
+      if(!error && data) payData.settings = Object.fromEntries(data.map(row=>[row.key, row.value]));
+      payData.pending = false;
+      renderBooking();
+    })
+    .catch(()=>{ payData.pending = false; renderBooking(); });
+}
+
+function renderBookingPay(t, booking){
+  // Proof already in: the slot stays held while staff verify it.
+  if(booking.paymentStatus === 'proof_submitted'){
+    return `<div class="disclaimer-box" style="text-align:left;margin:14px 0;">${escapeHtml(t.pay.waiting)}</div>`;
+  }
+  if(!payData.settings){
+    bookingLoadPaySettings();
+    if(payData.pending) return `<p style="color:var(--ink-soft);">${t.loadingText}</p>`;
+    return '';
+  }
+  const s = payData.settings;
+  // The QR setting is empty until the platform uploads one; when set, it is a
+  // hosted image URL (managed uploads arrive with the admin dashboard).
+  const qr = typeof s.esewa_qr_path === 'string' && /^https?:\/\//i.test(s.esewa_qr_path)
+    ? `<div style="margin:10px 0;"><img src="${escapeHtml(s.esewa_qr_path)}" alt="eSewa QR" style="max-width:220px;border-radius:8px;"></div>` : '';
+  return `<div style="text-align:left;margin:14px 0;padding:14px;border:1px solid var(--gold);border-radius:10px;">
+    <h4 style="margin:0 0 6px;">${escapeHtml(t.pay.title)}</h4>
+    <p style="font-size:.85rem;color:var(--ink-soft);margin:0 0 8px;">${escapeHtml(t.pay.note)}</p>
+    <div class="review-row"><span>${escapeHtml(s.esewa_account_label || t.pay.account)}</span><b>${escapeHtml(s.esewa_account_id || '')}</b></div>
+    ${qr}
+    <div class="field" style="margin-top:10px;"><label>${escapeHtml(t.pay.upload)}</label><input type="file" id="payProofFile" accept="image/jpeg,image/png,application/pdf" onchange="bookingPayFile(this)"></div>
+    ${payData.fileName ? `<p style="font-size:.82rem;margin:6px 0 0;">${escapeHtml(payData.fileName)}</p>` : ''}
+    <div class="field" style="margin-top:10px;"><label>${escapeHtml(t.pay.reference)}</label><input id="payReference" value="${escapeHtml(payData.reference)}" maxlength="120" oninput="payData.reference=this.value"></div>
+    ${payData._error ? `<p style="color:var(--maroon);font-weight:600;font-size:.85rem;">${escapeHtml(payData._error)}</p>` : ''}
+    <button class="btn btn-gold btn-block" style="margin-top:12px;" onclick="bookingPaySubmit()" ${payData.uploading?'disabled':''}>${payData.uploading?t.loadingText:escapeHtml(t.pay.submit)}</button>
+  </div>`;
+}
+
+function bookingPayFile(input){
+  payData.file = input.files?.[0] || null;
+  payData.fileName = payData.file?.name || null;
+  payData._error = null;
+  renderBooking();
+}
+
+async function bookingPaySubmit(){
+  const t = T[LANG];
+  const booking = bookingState.booking;
+  if(!booking?.paymentId || payData.uploading) return;
+  if(!payData.file){ payData._error = t.validationRequired; renderBooking(); return; }
+  const session = (await bookingClient().auth.getSession()).data.session;
+  if(!session){ payData._error = t.signInToContinue; renderBooking(); return; }
+  payData.uploading = true; payData._error = null; renderBooking();
+  try{
+    const form = new FormData();
+    form.append('file', payData.file);
+    if(payData.reference.trim()) form.append('reference', payData.reference.trim());
+    const response = await fetch(`/api/payments/${encodeURIComponent(booking.paymentId)}/proof`, {
+      method:'POST',
+      headers:{ Authorization:`Bearer ${session.access_token}` },
+      body: form
+    });
+    const body = await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error?.message || t.bookingFailed);
+    booking.paymentStatus = body.payment?.status || 'proof_submitted';
+    payData.file = payData.fileName = null; payData.reference = '';
+  } catch(err){
+    payData._error = err.message;
+  }
+  payData.uploading = false;
+  renderBooking();
 }
 
 function renderBooking(){
@@ -283,6 +369,10 @@ async function bookingSubmit(){
 
 function resetBooking(){
   Object.assign(bookingState, BOOKING_BLANK);
+  // A fresh booking means a fresh payment step; the eSewa account itself rarely
+  // changes, so it stays cached.
+  const settings = payData.settings;
+  Object.assign(payData, { settings, pending:false, uploading:false, file:null, fileName:null, reference:'', _error:null });
   bookingData.slots = null; bookingData.slotsKey = null; bookingData.failed = false;
   bookingProfileFor = null;
   renderBooking();

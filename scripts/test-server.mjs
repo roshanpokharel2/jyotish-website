@@ -528,6 +528,28 @@ try {
   r = await call(QUEUE, { headers: bearer(f2.token) });
   check('queue: empty once everything is decided', r.status === 200 && r.body?.payments?.length === 0, r.body);
 
+  // ---- booking form payment step (8d) -------------------------------------------------
+  // Fail-before: on 8c the booking response carries no payment id for the form.
+  const xSlot = (await freeSlots())[0]?.starts_at;
+  r = await book(x, { astrologerId: astro.id, serviceId: callService, startsAt: xSlot });
+  const xBooking = r.body?.booking;
+  check('book: response carries the payment id for the upload step', r.status === 200 && xBooking?.paymentId, xBooking);
+  r = await uploadProof(xBooking?.paymentId ?? crypto.randomUUID(), x, [PNG, 'x-shot.png', 'image/png']);
+  check('book: the form can submit proof straight from the response', r.status === 200 && r.body?.payment?.status === 'proof_submitted', r);
+  const { data: xPayRow } = await admin.from('payments').select('proof_storage_path').eq('id', xBooking?.paymentId ?? crypto.randomUUID()).single();
+  proofPrefixes.add(xPayRow.proof_storage_path.split('/').slice(0, 2).join('/'));
+  // The eSewa account is public settings: the form reads it without staff help.
+  const esewa = await x.db.from('platform_settings').select('key,value').in('key', ['esewa_account_label', 'esewa_account_id', 'esewa_qr_path']);
+  const esewaMap = Object.fromEntries((esewa.data ?? []).map((s) => [s.key, s.value]));
+  check('pay: eSewa account readable for the form, QR empty until set',
+    esewaMap.esewa_account_id === '9851001890' && esewaMap.esewa_account_label && esewaMap.esewa_qr_path === '', esewaMap);
+  // My Account: own bookings with their payment status, nothing else's.
+  const myBookings = await x.db.from('bookings').select('id,payments(status)').eq('id', xBooking?.id ?? crypto.randomUUID());
+  check('account: customer reads own booking with its payment status',
+    myBookings.data?.length === 1 && myBookings.data[0]?.payments?.[0]?.status === 'proof_submitted', myBookings);
+  const hiddenBooking = await c.db.from('bookings').select('id').eq('id', xBooking?.id ?? crypto.randomUUID());
+  check('account: another customer cannot see it', hiddenBooking.data?.length === 0, hiddenBooking);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);
