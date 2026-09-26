@@ -484,6 +484,11 @@ try {
   check('approve: finance -> 200 paid', r.status === 200 && r.body?.payment?.status === 'paid', r);
   const { data: confirmed } = await admin.from('bookings').select('status').eq('id', booked?.id ?? crypto.randomUUID()).single();
   check('approve: the booking is confirmed', confirmed?.status === 'confirmed', confirmed);
+  const { data: entries } = await admin.from('ledger_entries').select('entry_type, amount, direction').eq('payment_id', bookedPay?.id ?? crypto.randomUUID());
+  const byType = Object.fromEntries((entries ?? []).map((e) => [e.entry_type, e]));
+  check('approve: the ledger triple is written in the same transaction',
+    entries?.length === 3 && byType.platform_gross?.amount === 1000 && byType.platform_commission?.amount === 150
+    && byType.jyotish_payable?.amount === 850 && entries.every((e) => e.direction === 'credit'), entries);
   const { data: approvalAudit } = await admin.from('audit_log').select('actor_user_id, previous_state, new_state')
     .eq('entity_id', bookedPay?.id ?? crypto.randomUUID()).eq('action', 'payment.approved');
   check('approve: written to the audit log', approvalAudit?.length === 1 && approvalAudit[0]?.actor_user_id === f.id
