@@ -257,7 +257,7 @@ async function renderAccountRequests(body){
   // the older service requests below them.
   const [bookings, requests] = await Promise.all([
     client.from('bookings')
-      .select('id,scheduled_at,status,price_snapshot,currency,astrologer_id,services(name),payments(status)')
+      .select('id,scheduled_at,status,price_snapshot,currency,astrologer_id,services(name),payments(status),reviews(rating)')
       .order('scheduled_at', { ascending:false }).limit(20),
     client.from('service_requests')
       .select('id,request_type,status,created_at')
@@ -279,8 +279,7 @@ async function renderAccountRequests(body){
       const when = new Date(row.scheduled_at).toLocaleString();
       return `
       <div class="review-row">
-        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small></span>
-        <b>${escapeHtml(t.pay.st[pay] || pay || '—')}</b>
+        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small><br><small>${escapeHtml(t.pay.st[pay] || pay || '—')}</small>${renderBookingReview(t, row)}</span>
       </div>`;
     }).join('');
   }
@@ -296,6 +295,49 @@ async function renderAccountRequests(body){
   }
 
   body.innerHTML = html || `<div class="empty-box"><p>${escapeHtml(t.myAccEmpty)}</p></div>`;
+}
+
+/* ============================================================
+   REVIEWS
+   Completed bookings grow a small inline form: five stars and an optional
+   private note for staff. The insert goes straight to the table -- the policy
+   and trigger (0030) admit only the booking's own customer, once, and the
+   authorship comes from the booking, not the form.
+============================================================ */
+
+let rvOpen = null;
+let rvRating = 5;
+let rvNote = '';
+
+function reviewStars(n){
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function renderBookingReview(t, booking){
+  if(booking.status !== 'completed') return '';
+  const given = booking.reviews?.[0]?.rating;
+  if(given) return `<br><small style="color:var(--gold);font-size:1rem;letter-spacing:2px;">${escapeHtml(reviewStars(given))}</small>`;
+  if(rvOpen !== booking.id){
+    return `<br><button class="btn btn-ghost" style="margin-top:6px;padding:4px 12px;font-size:.8rem;" onclick="rvOpen='${escapeHtml(booking.id)}';rvRating=5;rvNote='';renderMyAccount()">${escapeHtml(t.rv.rate)}</button>`;
+  }
+  return `<br><span style="display:block;margin-top:6px;">
+    <span style="color:var(--gold);font-size:1.2rem;letter-spacing:2px;cursor:pointer;">${[1,2,3,4,5].map(i =>
+      `<span onclick="rvRating=${i};renderMyAccount()">${i <= rvRating ? '★' : '☆'}</span>`).join('')}</span><br>
+    <small>${escapeHtml(t.rv.rating)}</small>
+    <div class="field" style="margin-top:6px;"><label>${escapeHtml(t.rv.note)}</label><input value="${escapeHtml(rvNote)}" maxlength="2000" oninput="rvNote=this.value"></div>
+    <button class="btn btn-gold" style="margin-top:8px;padding:4px 12px;font-size:.8rem;" onclick="submitBookingReview('${escapeHtml(booking.id)}')">${escapeHtml(t.rv.submit)}</button>
+  </span>`;
+}
+
+async function submitBookingReview(bookingId){
+  const t = T[LANG];
+  const note = rvNote.trim() || null;
+  const { error } = await getMainSupabase().from('reviews').insert({
+    booking_id: bookingId, rating: rvRating, private_feedback: note
+  });
+  if(typeof showToast === 'function') showToast(error ? error.message : t.rv.submitted);
+  if(!error){ rvOpen = null; rvRating = 5; rvNote = ''; }
+  renderMyAccount();
 }
 
 /* ============================================================

@@ -61,6 +61,21 @@ function bookingLoadAstrologers(){
   });
 }
 
+// Published averages, keyed by practitioner. Anonymous-readable; a missing row
+// just means no reviews yet, so the card shows no stars.
+function bookingRatings(){
+  if(bookingData.ratings !== undefined) return bookingData.ratings;
+  bookingData.ratings = null;
+  bookingClient().from('practitioner_ratings').select('astrologer_id,review_count,avg_rating')
+    .then(({data, error})=>{
+      if(!error && data) bookingData.ratings = Object.fromEntries(data.map(r=>[r.astrologer_id, r]));
+      else bookingData.ratings = undefined;
+      renderBooking();
+    })
+    .catch(()=>{ bookingData.ratings = undefined; });
+  return bookingData.ratings;
+}
+
 function bookingLoadSlots(){
   const key = bookingSlotsKey();
   const {astrologerId, subOption} = bookingState;
@@ -136,9 +151,11 @@ function renderBookingAstrologers(t){
   html += bookingData.astrologers.map(a=>{
     const selected = bookingState.astrologerId===a.id;
     const about = a.specialization || '';
+    const stars = (bookingRatings() || {})[a.id];
+    const rating = stars ? `<p style="margin:2px 0 0;font-size:.82rem;color:var(--gold);">★ ${escapeHtml(stars.avg_rating)} (${escapeHtml(stars.review_count)})</p>` : '';
     return `<div class="service-card" style="cursor:pointer;display:flex;gap:14px;align-items:center;${selected?'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;':''}" onclick="bookingSetAstrologer('${escapeHtml(a.id)}')">
       <div class="service-icon" style="border-radius:50%;flex-shrink:0;">${ICONS.book}</div>
-      <div><h4 style="margin:0;">${escapeHtml(a.name)}</h4>${about?`<p style="margin:2px 0 0;font-size:.82rem;color:var(--ink-soft);">${escapeHtml(about)}</p>`:''}</div>
+      <div><h4 style="margin:0;">${escapeHtml(a.name)}</h4>${rating}${about?`<p style="margin:2px 0 0;font-size:.82rem;color:var(--ink-soft);">${escapeHtml(about)}</p>`:''}</div>
     </div>`;
   }).join('');
   return html;

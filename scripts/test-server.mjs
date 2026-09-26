@@ -613,6 +613,24 @@ try {
   const hiddenBooking = await c.db.from('bookings').select('id').eq('id', xBooking?.id ?? crypto.randomUUID());
   check('account: another customer cannot see it', hiddenBooking.data?.length === 0, hiddenBooking);
 
+  // ---- reviews UI contract (14b) ------------------------------------------------------
+  // The new My Account form inserts straight through RLS -- the exact calls,
+  // over HTTP as the browser. (Eligibility itself was proved in 0030.)
+  await admin.from('bookings').update({ status: 'completed' }).eq('id', xBooking?.id ?? crypto.randomUUID());
+  const myReview = await x.db.from('reviews')
+    .insert({ booking_id: xBooking?.id ?? crypto.randomUUID(), rating: 5, private_feedback: 'Thorough' }).select('id, rating, customer_id');
+  check('review: customer reviews own completed booking',
+    !myReview.error && myReview.data?.[0]?.rating === 5 && myReview.data[0]?.customer_id === x.customerId, myReview);
+  const dupReview = await x.db.from('reviews').insert({ booking_id: xBooking?.id ?? crypto.randomUUID(), rating: 4 });
+  check('review: a second review is refused', !!dupReview.error, dupReview.error?.message);
+  const othersReview = await c.db.from('reviews').insert({ booking_id: xBooking?.id ?? crypto.randomUUID(), rating: 1 });
+  check("review: another customer cannot review it", !!othersReview.error, othersReview.error?.message);
+  const seenReviews = await browser().from('public_reviews').select('id, astrologer_id, rating').eq('astrologer_id', astro.id);
+  check('review: visitors see the stars, and nothing else',
+    seenReviews.data?.length === 1 && seenReviews.data[0]?.rating === 5 && !('private_feedback' in (seenReviews.data[0] ?? {})) && !('customer_id' in (seenReviews.data[0] ?? {})), seenReviews);
+  const ratedPractitioner = await browser().from('practitioner_ratings').select('review_count, avg_rating').eq('astrologer_id', astro.id).maybeSingle();
+  check('review: visitors see the computed average', ratedPractitioner.data?.review_count === 1 && ratedPractitioner.data?.avg_rating === 5, ratedPractitioner);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);
