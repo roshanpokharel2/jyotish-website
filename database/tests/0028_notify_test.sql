@@ -135,7 +135,8 @@ begin
   reset role;
   perform set_config('request.jwt.claims', '', true);
 
-  -- 7. Email jobs stay staff-only, with no browser writes.
+  -- 7. Email jobs stay staff-only, with no browser writes. Scoped to the
+  --    fixture recipients: earlier end-to-end runs leave sent rows behind.
   if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'email_jobs'
              and cmd in ('INSERT', 'UPDATE', 'DELETE')) then
     raise exception 'FAIL: email_jobs has a browser write policy';
@@ -145,7 +146,7 @@ begin
   select count(*) into n from public.email_jobs;
   if n <> 0 then raise exception 'FAIL: a customer reads % email jobs', n; end if;
   perform set_config('request.jwt.claims', json_build_object('sub', user_f, 'role', 'authenticated')::text, true);
-  select count(*) into n from public.email_jobs;
+  select count(*) into n from public.email_jobs where recipient_user_id in (user_a, user_j);
   if n <> 5 then raise exception 'FAIL: finance reads % of 5 queued emails', n; end if;
   reset role;
   perform set_config('request.jwt.claims', '', true);

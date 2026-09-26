@@ -561,6 +561,36 @@ try {
   r = await drain(env.CRON_SECRET);
   check('drain: nothing due -> all zero', r.status === 200 && r.body?.drained?.sent === 0 && r.body?.drained?.failed === 0 && r.body?.drained?.cancelled === 0, r.body);
 
+  // ---- reminders run (13b) ----------------------------------------------------------
+  // Fail-before: without 13b this route 404s.
+  const RUN = '/api/reminders/run';
+  const run = (secret) => call(RUN, { method: 'POST', headers: secret ? { Authorization: `Bearer ${secret}` } : {} });
+  r = await run(null);
+  check('reminders: no secret -> 401', r.status === 401, r);
+  r = await run('wrong-secret');
+  check('reminders: wrong secret -> 401', r.status === 401, r);
+  r = await call(RUN, { method: 'POST', headers: bearer(c.token) });
+  check('reminders: user token is not a scheduler secret -> 401', r.status === 401, r);
+  r = await run(env.CRON_SECRET);
+  check('reminders: nothing due -> generated 0', r.status === 200 && r.body?.generated === 0, r.body);
+  // Pull the confirmed booking into both windows; both kinds go out once.
+  await admin.from('bookings').update({
+    scheduled_at: new Date(Date.now() + 30 * 60e3).toISOString(),
+    ends_at: new Date(Date.now() + 60 * 60e3).toISOString(),
+  }).eq('id', booked?.id ?? crypto.randomUUID());
+  r = await run(env.CRON_SECRET);
+  check('reminders: due booking notified (24h + 1h)', r.status === 200 && r.body?.generated === 2, r.body);
+  const { data: remindRows } = await admin.from('reminders').select('kind').eq('booking_id', booked?.id ?? crypto.randomUUID());
+  check('reminders: both kinds recorded', remindRows?.length === 2 && remindRows.some((x) => x.kind === 'booking_24h') && remindRows.some((x) => x.kind === 'booking_1h'), remindRows);
+  const { data: remindNotes } = await admin.from('notifications').select('user_id, type').eq('reference_id', booked?.id ?? crypto.randomUUID()).in('type', ['booking_24h', 'booking_1h']);
+  check('reminders: customer and practitioner notified',
+    remindNotes?.filter((x) => x.user_id === c.id).length === 2 && remindNotes?.filter((x) => x.user_id === a.id).length === 2, remindNotes);
+  const { data: remindMail } = await admin.from('email_jobs').select('kind, status').eq('entity_id', booked?.id ?? crypto.randomUUID());
+  check('reminders: customer emails queued',
+    remindMail?.length === 2 && remindMail.every((x) => x.status === 'pending'), remindMail);
+  r = await run(env.CRON_SECRET);
+  check('reminders: second run is a no-op', r.status === 200 && r.body?.generated === 0, r.body);
+
   // ---- booking form payment step (8d) -------------------------------------------------
   // Fail-before: on 8c the booking response carries no payment id for the form.
   const xSlot = (await freeSlots())[0]?.starts_at;

@@ -47,6 +47,16 @@ async function render(admin, job) {
         subject: 'Payout sent',
         body: `${payout.currency} ${payout.amount} was paid out to your account (ref ${payout.external_reference}).` };
     }
+    case 'booking_24h':
+    case 'booking_1h': {
+      const { data: booking } = await admin.from('bookings')
+        .select('price_snapshot, currency, scheduled_at').eq('id', job.entity_id).maybeSingle();
+      if (!booking) return null;
+      const soon = job.kind === 'booking_24h' ? 'tomorrow' : 'in about an hour';
+      return { email,
+        subject: job.kind === 'booking_24h' ? 'Consultation tomorrow' : 'Consultation in one hour',
+        body: `Reminder: your ${booking.currency} ${booking.price_snapshot} consultation is ${soon} at ${npt(booking.scheduled_at)} NPT.` };
+    }
     default:
       return null;
   }
