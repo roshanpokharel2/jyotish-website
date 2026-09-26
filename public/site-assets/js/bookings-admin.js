@@ -1,37 +1,40 @@
 /* ============================================================
    BOOKED SERVICES / ADMIN RECORDS
-   Groups locally stored submissions by person and supports export.
+   Submitted service requests from the database, grouped by person, with export.
+   RLS decides what is listed: staff see every request, anyone else only their own
+   (0002). Nothing is read from this browser's storage (Checkpoint K).
 ============================================================ */
 
 let bookingAdminRecords = [];
+let bookingAdminLoad = 0;
 
-const BOOKING_RECORD_TYPES = [
-  ['booking_', 'Consultation booking'],
-  ['chat_', 'Chat consultation'],
-  ['kundali_', 'Kundali request'],
-  ['order_', 'Shop order'],
-  ['enroll_', 'Class enrollment'],
-  ['contact_', 'Contact request']
-];
+const BOOKING_RECORD_TYPES = {
+  booking:'Consultation booking',
+  chat:'Chat consultation',
+  kundali:'Kundali request',
+  question:'Question',
+  order:'Shop order',
+  enrollment:'Class enrollment',
+  contact:'Contact request'
+};
 
-function getBookingAdminRecords(){
-  const records = [];
-  try {
-    for(let index=0; index<localStorage.length; index++){
-      const key = localStorage.key(index) || '';
-      const type = BOOKING_RECORD_TYPES.find(item=>key.startsWith(item[0]));
-      if(!type) continue;
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        records.push({ key, type:type[1], name:data.name || data.fullName || 'Unnamed visitor', data });
-      } catch(err) {
-        console.warn('Skipped unreadable booking record:', key, err);
-      }
-    }
-  } catch(err) {
-    console.warn('Booking records unavailable:', err);
-  }
-  return records.sort((first, second)=>String(second.key).localeCompare(String(first.key)));
+async function getBookingAdminRecords(){
+  const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
+  if(!client || !mainAuthUser) return null;
+  const { data, error } = await client.from('service_requests')
+    .select('id, request_type, status, payload, created_at')
+    .order('created_at', { ascending:false })
+    .limit(500);
+  if(error){ console.warn('Booking records unavailable:', error); return []; }
+  return data.map(row=>{
+    const payload = row.payload || {};
+    return {
+      key:`${new Date(row.created_at).toLocaleString()} · ${row.status}`,
+      type:BOOKING_RECORD_TYPES[row.request_type] || row.request_type,
+      name:String(payload.name || payload.fullName || payload.profile?.name || 'Unnamed visitor'),
+      data:payload
+    };
+  });
 }
 
 function recordText(record){
@@ -69,12 +72,21 @@ function groupBookingAdminRecords(){
   return [...groups.values()];
 }
 
-function renderBookingsAdmin(){
+async function renderBookingsAdmin(){
   const panel = document.getElementById('bookingsAdminGrid');
   if(!panel) return;
-  bookingAdminRecords = getBookingAdminRecords();
-  const groups = groupBookingAdminRecords();
+  const load = ++bookingAdminLoad;
+  const records = await getBookingAdminRecords();
+  if(load !== bookingAdminLoad) return; // a newer render (language, sign-in) won
   const t = T[LANG];
+  if(records === null){
+    bookingAdminRecords = [];
+    setText('bookingsCountEl', '');
+    panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.signInToContinue)}</p><button class="btn btn-gold" onclick="goView('account')">${t.authLoginTab}</button></div>`;
+    return;
+  }
+  bookingAdminRecords = records;
+  const groups = groupBookingAdminRecords();
   setText('bookingsCountEl', `${groups.length} ${t.bookingsPeopleLabel} · ${bookingAdminRecords.length} ${t.bookingsRecordsLabel}`);
   if(!groups.length){
     panel.innerHTML = `<div class="empty-box"><p>${t.bookingsEmpty}</p></div>`;

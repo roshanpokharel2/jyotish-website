@@ -45,12 +45,6 @@ async function sendChatWidgetMessage(){
   chatWidgetMessages.push({from:'user', text});
   input.value = '';
   renderChatWidgetBody();
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    const chatKey = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.chat) || 'site_chat_';
-    await window.JYOTISH_HELPERS.safeStorageSet(chatKey + Date.now(), JSON.stringify({text, lang:LANG}));
-  }
-
   // typing indicator
   chatWidgetMessages.push({from:'bot', text:'…', _typing:true});
   renderChatWidgetBody();

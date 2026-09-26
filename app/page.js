@@ -2,7 +2,7 @@ import LegacyRuntime from './legacy-runtime';
 
 const scripts = [
   'https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.109.0',
   '/site-assets/app-config.js',
   '/site-assets/js/site-config.js',
   'https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js',

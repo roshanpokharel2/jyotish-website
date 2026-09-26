@@ -123,11 +123,6 @@ async function bookingNext(){
     const seq = String(Math.floor(Math.random()*90000+10000));
     bookingState.bookingId = bookingState.kind==='direct' ? `A-${seq.slice(0,3)}` : `KP-ON-${seq}`;
     bookingState.confirmed = true;
-    const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-    if (storageOk) {
-      const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.booking) || 'booking_';
-      await window.JYOTISH_HELPERS.safeStorageSet(key + bookingState.bookingId, JSON.stringify(bookingState));
-    }
     if (typeof saveAuthenticatedSubmission === 'function') {
       await saveAuthenticatedSubmission('booking', bookingState);
     }

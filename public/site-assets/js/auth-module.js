@@ -65,15 +65,24 @@ function renderAuthForm(){
   }
 }
 
-async function syncMainCustomer(user, metadata={}){
+// Creates the customer profile once, from the sign-up details. After that the profile
+// is the customer's (name, phone, birth details edited in the site): signing in again
+// must not reset it to what was typed at sign-up, which the old upsert did every time.
+async function syncMainCustomer(user){
   const client = getMainSupabase();
   if(!client || !user) return;
-  const { data, error } = await client.from('customers').upsert({
-    user_id:user.id,
-    full_name:metadata.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer',
-    // No status: the database owns it (0008) and refuses a client that sends one.
-    phone:metadata.phone || user.user_metadata?.phone || null
-  }, {onConflict:'user_id'}).select('*').single();
+  const own = () => client.from('customers').select('*').eq('user_id', user.id).maybeSingle();
+  let { data, error } = await own();
+  if(!error && !data){
+    ({ error } = await client.from('customers').upsert({
+      user_id:user.id,
+      full_name:user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer',
+      // No status: the database owns it (0008).
+      phone:user.user_metadata?.phone || null,
+      email:user.email || null
+    }, {onConflict:'user_id', ignoreDuplicates:true}));
+    if(!error) ({ data, error } = await own());
+  }
   if(error) { console.warn('Customer profile sync failed:', error); return; }
   mainCustomer = data;
 }
@@ -131,6 +140,9 @@ async function resetAuthPassword(){
 }
 
 async function applyMainSession(session){
+  // Signed out (here or in another tab): start from a fresh page, so nothing of the
+  // previous account (profile, birth details, history) stays on a shared device.
+  if(!session?.user && mainAuthUser){ window.location.reload(); return; }
   mainAuthUser = session?.user || null;
   demoLoggedIn = Boolean(mainAuthUser);
   if(mainAuthUser) await syncMainCustomer(mainAuthUser);

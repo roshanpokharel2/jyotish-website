@@ -65,7 +65,7 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–J
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–K
 done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
@@ -558,9 +558,76 @@ dev log ("Identifier 'APP' / 'mainSupabase' … has already been declared", 2 on
 Typing indicators, pagination (all messages load at once), image previews. Practitioners
 see "Customer consultation" rather than a name: they cannot read customer profiles
 (RLS), and exposing a display name is a separate decision. `/` still loads the floating
-`supabase-js@2` (Checkpoint K). No favicon.
+`supabase-js@2` (pinned in Checkpoint K). No favicon.
 
 **Rollback** Revert the four files; no database or server change.
+
+#### Checkpoint K — customer data out of the browser (first pass) ✅ (running against development)
+
+**What**
+- **Nothing customer-related is written to `localStorage` any more.** Removed from the
+  booking, chat-consultation, kundali, shop order, class enrolment, contact, chat-widget,
+  vastu (request record and floor-plan pins) and Ask flows. The only browser storage left
+  is Supabase's own sign-in session.
+- **Existing copies are deleted** on every page load (`site-helpers.js`): every key
+  prefix the old code wrote (`booking_`, `chat_`, `kundali_`, `order_`, `enroll_`,
+  `contact_`, `site_chat_`, `ask_question_`, `vastu_request_`, `vastu_annotation_pins…`,
+  `jyotish_ask_birth_profile`, `jyotish_ask_history`); other keys are left alone.
+- **Signed-in submissions go to the database instead.** Booking and kundali already did
+  (`service_requests`); chat consultation, shop order, class enrolment and contact now do
+  too (the request types already existed).
+- **"Booked services"** reads `service_requests` (RLS, 0002: staff see every request,
+  anyone else only their own) instead of whatever this browser had stored. Signed out it
+  shows a sign-in prompt.
+- **Ask a question**: the birth profile is read from and saved to the customer's
+  `customers` row, the history from `question_consultations`; asking requires sign-in (a
+  signed-out question was only ever saved in the browser, so it reached nobody).
+- **Login sync** (`syncMainCustomer`) creates the customer profile once from the sign-up
+  details and never overwrites it again. It used to upsert `full_name` / `phone` on every
+  sign-in *and every auth event* (token refresh), reverting the customer's edits.
+- **Sign-out reloads the page** (also when signing out in another tab), so the previous
+  account's profile, birth details and history are not left in memory.
+- supabase-js pinned to `2.109.0` on `/` as well (the floating `@2` served 2.117.2).
+
+**Why** Section 4F of the brief. On a shared computer, anyone could open the public
+"Booked services" page and read or download every earlier visitor's name, phone number,
+birth date, time and place and payment reference; the Ask form even prefilled the next
+visitor with the previous one's birth profile. And a customer's profile edits were
+silently undone at their next sign-in.
+
+**Test** One-off headless-Edge run on the real home page (production build), before
+(committed code) and after:
+
+| Check | Before | After |
+|---|---|---|
+| Old records removed from `localStorage` on load, other keys kept | fail (all 12 kept) | pass |
+| "Booked services" signed out | fail (showed a previous visitor's name, phone, birth date) | pass (sign-in prompt) |
+| Contact form signed out / signed in writes nothing to `localStorage` | fail | pass |
+| Ask signed out asks to sign in | fail | pass |
+| Second sign-in keeps the edited name and phone | fail (reset to sign-up values) | pass |
+| Ask prefilled from the database profile | fail (prefilled with the *previous visitor's* name) | pass |
+| Contact form signed in saved as a service request | fail (nowhere) | pass |
+| "Booked services" shows own request, not another user's | pass | pass |
+| Sign-out leaves no user, profile or birth details in memory, no token in storage | — (timed out: no reload) | pass |
+
+Passed three times after the fix, including on the pinned supabase-js. The first run
+after the change caught a bug in the clean-up itself (removing keys while walking by
+index skips some in Chromium); fixed by collecting the keys first. No page errors;
+`npm run test:server` still passes. No database change.
+
+**Not done here**
+- **Signed-out submissions still reach nobody** except booking and kundali, which email
+  the details to a third party (`formsubmit.co`) from the browser. Chat consultation,
+  order, enrolment and contact sent signed out now leave no record at all, exactly as
+  far as the business is concerned as before (the copy only ever lived in that visitor's
+  browser). Replacing these flows is Step 7 (bookings through the server) — or earlier,
+  requiring sign-in for them, if you decide so.
+- Client-generated booking / order ids and client-declared payment state (Step 7–8).
+- Staff "Booked services" lists the latest 500 requests with no paging or status
+  handling; it is a read-only stopgap until the admin workflow exists.
+
+**Rollback** Revert the files. The clean-up has already deleted old copies from browsers
+that loaded the page; that is intended and not undone.
 
 ---
 

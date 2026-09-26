@@ -220,3 +220,15 @@ is worse than no row.
   to do (validation, cross-row checks, service-role writes); they do not replace policies.
 - **Errors**: caller-facing ones are explicit `HttpError`s; anything unexpected is a
   generic 500 with the detail only in the server log.
+
+---
+
+## AD-17 — No customer data in browser storage (Checkpoint K)
+
+Personal data (names, contact details, birth details, questions, bookings, payment
+references) is kept in the database under RLS, never in `localStorage` /
+`sessionStorage`: browser storage has no access control between people sharing a
+device, no expiry, and cannot be deleted on the customer's behalf. The only browser
+storage is Supabase's sign-in session, removed at sign-out. A feature that needs to
+remember something about a customer needs an account and a database row. Harmless UI
+preferences (language, a collapsed panel) may still use `localStorage`.

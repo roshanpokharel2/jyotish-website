@@ -70,11 +70,7 @@ async function chatNext(){
     const seq = String(Math.floor(Math.random()*9000+1000));
     chatState.chatId = `JVS-CHAT-${year}-${seq}`;
     chatState.confirmed = true;
-    const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-    if (storageOk) {
-      const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.chatConsult) || 'chat_';
-      await window.JYOTISH_HELPERS.safeStorageSet(key + chatState.chatId, JSON.stringify(chatState));
-    }
+    if (typeof saveAuthenticatedSubmission === 'function') await saveAuthenticatedSubmission('chat', chatState);
     renderChat();
   }
 }
