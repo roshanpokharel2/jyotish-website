@@ -66,7 +66,7 @@ per step; a fresh project runs it once and then every migration in order. Self-a
 checks live in `database/tests/`.
 
 **Status:** Steps 1–6 done. Phase 1 security hardening done (Checkpoints A–K, see
-below). Step 7 done (services catalog). The project in `.env` is the **development** database; 0001–0013 are applied
+below). Step 7 under way (7a services catalog, 7b availability and bookings, 7c booking endpoint done). The project in `.env` is the **development** database; 0001–0015 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -631,7 +631,15 @@ that loaded the page; that is intended and not undone.
 
 ---
 
-### Step 7 — Services catalog — `0013_services.sql` ✅ (applied to development)
+### Step 7 — Bookings through the server
+
+Brief step 7: bookings must not depend on localStorage, formsubmit.co, client ids,
+client payment status or client-declared ownership; the server decides customer,
+practitioner, service, price, duration, availability and status; the database prevents
+double booking. Built in checkpoints 7a–7d. It absorbs the database half of the old
+Steps 8–10 below (availability, slot locking, booking columns).
+
+#### Checkpoint 7a — services catalog — `0013_services.sql` ✅ (applied to development)
 
 **What**
 - `services` extended (AD-3): `astrologer_id` (null = offered by the platform with any
@@ -683,9 +691,122 @@ second application of 0013.
 **Rollback** Fix forward. The table had no readers or writers before, so reverting the
 browser later is unaffected; dropping the policies only makes the catalog unreadable again.
 
+#### Checkpoint 7b — availability, free slots, no double booking — `0014_bookings.sql` ✅ (applied to development)
+
+**What**
+- **`availability`** (weekly hours, practitioner's local time): the practitioner sets
+  their own, an admin can fix them; nobody sets another practitioner's. Public read for
+  active practitioners. `start_time < end_time`; one time zone (`Asia/Kathmandu`) for now.
+- **`available_slots(astrologer, service, from, to)`** — free start times computed in the
+  database: each availability window stepped by the service's duration, minus time held
+  by bookings, only slots starting after the hold window, at most 31 days per call.
+  Callable by visitors; returns times only, never who booked.
+- **`create_booking(customer, astrologer, service, starts_at)`** — service role only
+  (the server). Refuses a non-active customer, a practitioner booking themselves, a
+  service that is not active / timed / offered by that practitioner, a suspended
+  practitioner, and any start time that `available_slots` does not offer. Takes end
+  time, price, currency, mode and commission from the database. Starts
+  `payment_pending` with `hold_expires_at = now() + reservation_minutes` (10). At most
+  two live holds per customer (the customer row is locked, so this cannot be raced).
+  Errors are codes: `CUSTOMER_NOT_ACTIVE`, `SELF_BOOKING`, `SERVICE_NOT_BOOKABLE`,
+  `SLOT_UNAVAILABLE`, `TOO_MANY_HOLDS`.
+- **`bookings`**: `service_id`, `ends_at`, `hold_expires_at`, `consultation_mode`,
+  `price_snapshot`, `currency`, `commission_percent_snapshot`; statuses
+  `payment_pending | confirmed | in_progress | completed | cancelled | no_show | expired`
+  (old `pending` / `rescheduled` still valid, hold no time).
+- **The double-booking rule is an exclusion constraint** (`btree_gist`): two bookings of
+  one practitioner that hold time (`payment_pending`, `confirmed`, `in_progress`,
+  `completed`) cannot overlap, whoever writes them. A booking that holds time must have
+  a real interval. An expired hold is marked `expired` by the next booking of that time.
+- **The browser can no longer write bookings**: the old policy "customers can create
+  own bookings" (checked only ownership, so a customer could insert a `confirmed`
+  booking with no payment) is dropped. No browser update either. Staff can read bookings.
+- AD-18: the hold *is* the booking; there is no separate `reservations` table.
+
+**Why** The database had no notion of a practitioner's time, so nothing could stop two
+customers buying the same hour, and the one booking policy let a customer declare their
+own booking confirmed.
+
+**Test** `database/tests/0014_bookings_test.sql`: fails before 0014 (a signed-in customer
+inserts their own `confirmed` booking), passes after; 0002–0013 still pass. Covers:
+hours set only by their practitioner, invalid hours / time zone refused; visitors see
+exactly the 6 half-hour slots of a 09:00–12:00 window, none for a practitioner without
+hours, nothing for a range over 31 days; visitors and signed-in users cannot call
+`create_booking`; a booking's end, price, currency, mode, commission and hold come from
+the database; a held slot disappears from the free list; a second booking of it is
+refused, and so is an overlapping row written directly and a `confirmed` row without
+a time; off-grid, out-of-hours and past times refused; another practitioner's, draft and
+untimed services refused; blocked customer and self-booking refused; a third hold
+refused; customers see only their own bookings, practitioners only theirs, and a
+customer cannot confirm or re-price theirs; a service price change leaves the booking's
+price alone; an expired hold frees the slot and is marked `expired` when retaken; a
+suspended practitioner offers no slots and takes no bookings.
+Plus, against the real database: **10 connections booking the same slot at the same
+moment → exactly 1 succeeds, 9 get `SLOT_UNAVAILABLE`, 1 row stored** (three runs;
+throwaway users removed). And the public REST API with the anon key: `available_slots`
+answers; `create_booking` → 401 "permission denied"; inserting a booking → 401 `42501`.
+
+**Not done here**
+- No endpoint or UI yet (7c: `POST /api/bookings`; 7d: the booking form).
+- Date-specific days off (`availability_exceptions`) are not built; a practitioner
+  blocks a day by deactivating hours.
+- Nothing yet moves a booking past `payment_pending`; expired holds are marked lazily
+  (the free-slot list already ignores them). Payment and confirmation are Step 8.
+- Slots start at the window's start and step by the service duration; mixing services
+  of different lengths can leave gaps.
+
+**Rollback** Fix forward. Dropping the constraint or restoring the old insert policy
+would bring double booking and self-confirmed bookings back.
+
+#### Checkpoint 7c — booking endpoint — `POST /api/bookings` + `0015_booking_notes.sql` ✅ (running against development)
+
+**What**
+- `app/api/bookings/route.js`: `POST { astrologerId, serviceId, startsAt, notes? }`
+  behind `requireUser()` (blocked customers refused). Validates shape only — uuids, an
+  instant with an explicit time zone, notes as text ≤ 2000 characters, 4 KB body — then
+  calls `create_booking()` with the **caller's own customer id** from the database.
+  Anything else in the body (price, status, owner, end time, currency) is ignored.
+- Database refusals map to: `self` 400, `not_found` 404 (unknown / draft / untimed /
+  other practitioner's service, unknown or suspended practitioner), `slot_unavailable`
+  409, `too_many_holds` 409, `account_inactive` 403.
+- Response: id, status, service, practitioner, start, end, hold expiry, mode, price,
+  currency, notes — not the commission snapshot.
+- `0015_booking_notes.sql`: `create_booking()` takes `p_notes` and stores it (trimmed,
+  blank → null) in the same insert; `bookings.notes` ≤ 2000 characters; the
+  four-argument version is dropped. Supersedes the function from 0014.
+- Free slots need no endpoint: the browser calls `available_slots()` directly (public).
+
+**Why** The trusted entry point for 7b's rules; the browser only says which time it
+wants.
+
+**Test**
+- `database/tests/0015_booking_notes_test.sql`: fails before 0015 (no notes parameter),
+  passes after; 0002–0014 still pass. Notes stored and trimmed, blank → null, over
+  2000 refused with nothing stored, one server-only entry point.
+- `npm run test:server` against a production build, 26 new checks (88 total, three
+  runs). Before: built without `app/api/bookings`, 20 of them fail (404). After, all
+  pass: a visitor gets the 6 free times; the browser cannot write a booking; no token
+  401; bad ids / time without zone / long or non-text notes 400; blocked customer 403;
+  practitioner booking themselves 400; unknown or draft service and unknown practitioner
+  404; an off-grid time 409; a booking with forged `price: 1`, `status: 'confirmed'`,
+  another customer's id, a longer end and `USD` comes back `payment_pending`, NPR 1,000,
+  30 minutes, held ~10 minutes, stored for the caller; the held time disappears from the
+  free list; the same time again 409; **three customers requesting one time at once →
+  one 200, two 409**; a third hold 409 `too_many_holds`; customers see only their own
+  bookings, the practitioner sees theirs, a customer cannot confirm their own; GET 405.
+  No `[api]` errors in the server log; the secret key is not in `.next/static`.
+
+**Not done here** The booking form still uses its old flow (7d). No cancel endpoint:
+an unpaid hold simply expires. No rate limiting (with the payment endpoints).
+
+**Rollback** Delete `app/api/bookings`; 0015 is fix-forward (the notes parameter is
+optional, so 0014-style calls keep working).
+
 ---
 
 ### Step 8 — Availability and slot computation
+
+> **Done in Checkpoint 7b** (0014), except `availability_exceptions`.
 
 **What** Keep the `availability` table (weekly recurring rules). Add
 `availability_exceptions` (date-specific blocks/holidays). Add a
@@ -708,6 +829,9 @@ the other customer's identity.
 ---
 
 ### Step 9 — Reservations (slot locking)
+
+> **Replaced by Checkpoint 7b** (AD-18): the hold is a `payment_pending` booking with
+> `hold_expires_at`; no `reservations` table. The concurrency test below passed.
 
 **What** New `reservations`: `id`, `customer_id`, `astrologer_id`, `service_id`,
 `scheduled_start`, `scheduled_end`, `expires_at`, `status`
@@ -733,6 +857,9 @@ timestamp.
 ---
 
 ### Step 10 — Bookings and consultations
+
+> **Booking columns, statuses and snapshots done in Checkpoint 7b** (no `reservation_id`:
+> AD-18). The `consultations` columns remain for the audio/video step.
 
 **What** Define the split clearly and keep both existing tables:
 - `bookings` = the commercial appointment (who, what service, when, price snapshot,

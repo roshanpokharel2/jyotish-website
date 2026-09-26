@@ -37,6 +37,8 @@ self-record makes a duplicate fail — but it skips the runner's order checks.
 | `0011_storage_buckets.sql` | Phase 1 F | `chat-attachments` / `vastu-files` created; all buckets private, 10 MB, JPEG/PNG/PDF; no browser chat uploads; Vastu uploads tied to own project; only reviewers read credential documents |
 | `0012_schema_migrations.sql` | Phase 1 G | `schema_migrations` table (no API access); migrations from here on record themselves; 0001–0011 deliberately not recorded |
 | `0013_services.sql` | 7 | Services catalog: practitioner, type, slug, mode, duration, currency, status; active services must be complete; public read of active services, admin-only writes, no deletes; seeded from the site's prices; `is_active_astrologer()` |
+| `0014_bookings.sql` | 7 | Practitioner-managed weekly `availability`; `available_slots()` (public, times only); server-only `create_booking()` with database-decided price/time/hold; exclusion constraint against overlapping bookings (`btree_gist`); browser booking insert policy dropped |
+| `0015_booking_notes.sql` | 7 | `create_booking()` stores the customer's message (≤ 2000 characters) in the same insert. **Supersedes** `create_booking()` from 0014 |
 
 ## Function privileges — read this before adding a `security definer` function
 

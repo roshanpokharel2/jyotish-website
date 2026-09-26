@@ -270,6 +270,91 @@ try {
   r = await call(CLOSE(strangerConv), { method: 'POST', headers: bearer(c.token) });
   check("close: another customer's conversation -> 404", r.status === 404, r);
 
+  // ---- bookings --------------------------------------------------------------------
+  const BOOK = '/api/bookings';
+  const service = async (slug) => (await admin.from('services').select('id').eq('slug', slug).is('astrologer_id', null).single()).data?.id;
+  const callService = await service('live-call');
+  const { error: hoursError } = await admin.from('availability')
+    .insert([0, 1, 2, 3, 4, 5, 6].map((d) => ({ astrologer_id: astro.id, day_of_week: d, start_time: '09:00', end_time: '12:00' })));
+  if (hoursError) throw hoursError;
+  const day = new Date(Date.now() + 2 * 86400e3).toLocaleDateString('en-CA', { timeZone: 'Asia/Kathmandu' });
+  // What the booking form will ask for: free slots, as a visitor, straight from the database.
+  const freeSlots = async () => (await browser().rpc('available_slots', { p_astrologer: astro.id, p_service: callService, p_from: day, p_to: day })).data ?? [];
+  const slots = await freeSlots();
+  check('slots: a visitor gets the 6 free start times', slots.length === 6 && slots[0].starts_at, slots);
+  const at = (i) => slots[i]?.starts_at;
+  const book = (user, value) => postJson(BOOK, user, value);
+
+  const directBooking = await c.db.from('bookings').insert({ customer_id: c.customerId, astrologer_id: astro.id, consultation_type_id: crypto.randomUUID(), status: 'confirmed' });
+  check('browser cannot write a booking itself (RLS)', !!directBooking.error, directBooking);
+  r = await call(BOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ astrologerId: astro.id, serviceId: callService, startsAt: at(0) }) });
+  check('book: no token -> 401', r.status === 401, r);
+  r = await book(c, { astrologerId: 'kp', serviceId: callService, startsAt: at(0) });
+  check('book: astrologerId not a uuid -> 400', r.status === 400, r);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: `${day}T10:00` });
+  check('book: time without a time zone -> 400', r.status === 400, r);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: 'x'.repeat(2001) });
+  check('book: notes over 2000 characters -> 400', r.status === 400, r);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: { html: '<b>' } });
+  check('book: notes not text -> 400', r.status === 400, r);
+  r = await book(b, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
+  check('book: blocked customer -> 403', r.status === 403, r);
+  r = await book(a, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
+  check('book: practitioner books themselves -> 400', r.status === 400 && r.body?.error?.code === 'self', r);
+  r = await book(c, { astrologerId: astro.id, serviceId: crypto.randomUUID(), startsAt: at(0) });
+  check('book: unknown service -> 404', r.status === 404, r);
+  r = await book(c, { astrologerId: astro.id, serviceId: await service('direct'), startsAt: at(0) });
+  check('book: draft service -> 404', r.status === 404, r);
+  r = await book(c, { astrologerId: crypto.randomUUID(), serviceId: callService, startsAt: at(0) });
+  check('book: unknown practitioner -> 404', r.status === 404, r);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: new Date(Date.parse(at(0)) + 10 * 60e3).toISOString() });
+  check('book: a time that is not offered -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
+
+  // The browser's claims about price, status, owner and length are ignored.
+  const sentAt = Date.now();
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: ' Career question ',
+    price: 1, status: 'confirmed', customerId: s.customerId, endsAt: at(5), currency: 'USD' });
+  const booked = r.body?.booking;
+  check('book: customer -> 200, payment_pending, price and length from the database',
+    r.status === 200 && booked?.status === 'payment_pending' && booked.price === 1000 && booked.currency === 'NPR'
+    && Date.parse(booked.endsAt) - Date.parse(booked.startsAt) === 30 * 60e3 && Date.parse(booked.startsAt) === Date.parse(at(0))
+    && booked.notes === 'Career question', r);
+  const holdMinutes = (Date.parse(booked?.holdExpiresAt) - sentAt) / 60e3;
+  check('book: slot held for about 10 minutes', holdMinutes > 9 && holdMinutes < 11, booked?.holdExpiresAt);
+  check('book: response has no commission or internal fields', booked && !Object.keys(booked).some((k) => /commission|customer/i.test(k)), booked);
+  const { data: stored } = await admin.from('bookings').select('customer_id, status').eq('id', booked?.id ?? crypto.randomUUID()).single();
+  check('book: stored for the signed-in customer, not the one claimed', stored?.customer_id === c.customerId && stored.status === 'payment_pending', stored);
+  check('book: the held time is no longer offered', !(await freeSlots()).some((x) => x.starts_at === at(0)), null);
+  r = await book(s, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
+  check('book: the same time again -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
+
+  // Three customers ask for one time at the same moment.
+  const race = await Promise.all([s, x, c].map((u) => book(u, { astrologerId: astro.id, serviceId: callService, startsAt: at(1) })));
+  check('book: three concurrent requests for one time -> one 200, two 409',
+    race.filter((x) => x.status === 200).length === 1 && race.filter((x) => x.status === 409).length === 2, race.map((x) => x.status));
+
+  // No more than two slots held at once per customer.
+  let holdsRefused = null;
+  for (let i = 2; i <= 4 && !holdsRefused; i++) {
+    const res = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(i) });
+    if (res.status !== 200) holdsRefused = res;
+  }
+  const { count: cHolds } = await admin.from('bookings').select('id', { count: 'exact', head: true }).eq('customer_id', c.customerId).eq('status', 'payment_pending');
+  check('book: a third hold -> 409 too_many_holds', holdsRefused?.body?.error?.code === 'too_many_holds' && cHolds === 2, { holdsRefused, cHolds });
+
+  // Reads stay with RLS; the browser still cannot change a booking.
+  const ownBookings = await c.db.from('bookings').select('id, customer_id');
+  check('bookings: customer sees only their own', ownBookings.data?.length === 2 && ownBookings.data.every((x) => x.customer_id === c.customerId), ownBookings);
+  const othersBooking = await s.db.from('bookings').select('id').eq('id', booked?.id ?? crypto.randomUUID());
+  check("bookings: another customer cannot see it", othersBooking.data?.length === 0, othersBooking);
+  const practitionerView = await a.db.from('bookings').select('id').eq('id', booked?.id ?? crypto.randomUUID());
+  check('bookings: the practitioner sees it', practitionerView.data?.length === 1, practitionerView);
+  const selfConfirm = await c.db.from('bookings').update({ status: 'confirmed' }).eq('id', booked?.id ?? crypto.randomUUID()).select();
+  const { data: still } = await admin.from('bookings').select('status').eq('id', booked?.id ?? crypto.randomUUID()).single();
+  check('bookings: customer cannot confirm their own booking', (selfConfirm.error || selfConfirm.data?.length === 0) && still?.status === 'payment_pending', { selfConfirm, still });
+  r = await call(BOOK, { headers: bearer(c.token) });
+  check('book: GET -> 405', r.status === 405, r.status);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);

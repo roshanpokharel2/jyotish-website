@@ -202,6 +202,14 @@ done in the SQL editor, for example
 A service goes `active` only when it has a mode, a price above zero and (for timed modes)
 a duration. Retire one with `status = 'archived'`; services are never deleted.
 
+**Bookings** (0014) are created only by the server (`POST /api/bookings`, signed-in
+customers) through `create_booking()`, which
+takes the time from the practitioner's weekly `availability` and the price from the
+service. Two bookings of one practitioner can never overlap (a database constraint).
+There is no UI for weekly hours yet; add them in the SQL editor, e.g.
+`insert into public.availability (astrologer_id, day_of_week, start_time, end_time) values ('<astrologer id>', 0, '09:00', '12:00');`
+(`day_of_week` 0 = Sunday).
+
 ---
 
 ## 4. Authentication setup

@@ -224,6 +224,11 @@ is worse than no row.
   to do (validation, cross-row checks, service-role writes); they do not replace policies.
 - **Errors**: caller-facing ones are explicit `HttpError`s; anything unexpected is a
   generic 500 with the detail only in the server log.
+- **Rules that must hold under concurrency live in the database** (Checkpoint 7b/7c):
+  the booking route only validates shape and passes the caller's own customer id to
+  `create_booking()`, which decides and enforces the rest in one transaction. Its
+  refusals are raised as bare codes (`SLOT_UNAVAILABLE`, …) that the route maps to
+  HTTP errors.
 
 ---
 
@@ -236,3 +241,15 @@ device, no expiry, and cannot be deleted on the customer's behalf. The only brow
 storage is Supabase's sign-in session, removed at sign-out. A feature that needs to
 remember something about a customer needs an account and a database row. Harmless UI
 preferences (language, a collapsed panel) may still use `localStorage`.
+
+---
+
+## AD-18 — A slot hold is a booking, not a reservation row (Checkpoint 7b)
+
+The plan had `reservations` (the ten-minute hold) feeding `bookings`. Instead a booking
+is created at once as `payment_pending` with `hold_expires_at`. One table, one
+exclusion constraint against overlap, and no step that copies a reservation into a
+booking and could fail between the two. A constraint cannot compare with `now()`, so an
+expired hold keeps occupying the slot in the constraint until the next booking of that
+time marks it `expired`; the free-slot list ignores expired holds already. Payment
+(Step 8) must refuse to confirm a booking whose hold has expired.
