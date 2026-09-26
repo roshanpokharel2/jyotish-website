@@ -9,7 +9,8 @@
 // is declared "development" (see the guard below). Each file runs as one simple query, so a file that
 // wraps itself in begin/commit or begin/rollback behaves exactly as written.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import pg from 'pg';
 
 const env = Object.fromEntries(
@@ -48,9 +49,15 @@ if (!urlRef || !dbRef || (dbRef[1] ?? dbRef[2]) !== urlRef) {
 console.log(`target: ${target} (project ${urlRef})`);
 
 const wantsStatus = args.includes('--status');
-const files = args.filter((a) => a !== '--production' && a !== '--status');
+// A directory stands for its .sql files in name order (works in any shell). Migrations
+// reached through a directory that are already applied are skipped, not refused, so
+// `database/migrations` means "whatever is pending".
+const files = args.filter((a) => a !== '--production' && a !== '--status').flatMap((a) =>
+  statSync(a).isDirectory()
+    ? readdirSync(a).filter((f) => f.endsWith('.sql')).sort().map((f) => ({ path: join(a, f), fromDir: true }))
+    : [{ path: a, fromDir: false }]);
 if (!files.length && !wantsStatus) {
-  console.error('usage: node scripts/db.mjs <file.sql> [...]   |   node scripts/db.mjs --status');
+  console.error('usage: node scripts/db.mjs <file.sql|dir> [...]   |   node scripts/db.mjs --status');
   process.exit(2);
 }
 
@@ -90,22 +97,30 @@ if (wantsStatus) {
   process.exit(0);
 }
 
-// Why a migration must not run now, or null. Checked just before each file against
-// freshly read state, so a batch like "0013 0014" (or reset + rebuild) works in order.
+// Why a file must not run now, or null. Checked just before each file against freshly
+// read state, so a batch like "0013 0014" (or reset + rebuild) works in order.
+// `applied: true` marks "this database already has it" (skippable from a directory).
 const refusal = (file, sql) => {
+  if (basename(file) === 'schema.sql') {
+    // Not transactional: on a built database it would half-run, then fail.
+    return tracked ? { why: 'this database is already set up; use `npm run db:migrate` for new migrations' } : null;
+  }
   const v = versionOf(file);
-  if (!v) return null; // tests, schema.sql, probes: not tracked
+  if (!v) return null; // tests, dev scripts, probes: not tracked
   if (v < TRACKING_FROM) {
     return tracked
-      ? `${v} predates tracking and this database is already past it; re-running it can undo later fixes`
+      ? { applied: true, why: `${v} predates tracking and this database is already past it; re-running it can undo later fixes` }
       : null; // fresh install, before 0012
   }
-  if (recorded.has(v)) return `${v} is already applied (${recorded.get(v).toISOString()})`;
-  if (!tracked && v !== TRACKING_FROM) return `apply ${TRACKING_FROM}_schema_migrations.sql first`;
+  if (recorded.has(v)) return { applied: true, why: `${v} is already applied (${recorded.get(v).toISOString()})` };
+  return pending(v, sql);
+};
+const pending = (v, sql) => {
+  if (!tracked && v !== TRACKING_FROM) return { why: `apply ${TRACKING_FROM}_schema_migrations.sql first` };
   const missing = allMigrations.map((f) => f.slice(0, 4)).filter((m) => m >= TRACKING_FROM && m < v && !recorded.has(m));
-  if (missing.length) return `apply ${missing.join(', ')} first`;
+  if (missing.length) return { why: `apply ${missing.join(', ')} first` };
   if (!new RegExp(`insert\\s+into\\s+public\\.schema_migrations[^;]*'${v}'`, 'i').test(sql)) {
-    return `${v} does not record itself (insert into public.schema_migrations ... '${v}' ...)`;
+    return { why: `${v} does not record itself (insert into public.schema_migrations ... '${v}' ...)` };
   }
   return null;
 };
@@ -118,14 +133,16 @@ if (!(await client.query(`select pg_try_advisory_lock(hashtext('scripts/db.mjs')
 }
 
 let failed = false;
-for (const file of files) {
-  process.stdout.write(`\n== ${file}\n`);
+let skipped = 0;
+for (const { path: file, fromDir } of files) {
   const sql = readFileSync(file, 'utf8').replace(/^﻿/, '');
-  if (versionOf(file)) await loadRecorded(); // an earlier file in this batch may have changed it
-  const why = refusal(file, sql);
-  if (why) {
+  await loadRecorded(); // an earlier file in this batch may have changed it
+  const refused = refusal(file, sql);
+  if (refused?.applied && fromDir) { skipped++; continue; }
+  process.stdout.write(`\n== ${file}\n`);
+  if (refused) {
     failed = true;
-    console.error(`  REFUSED: ${why}`);
+    console.error(`  REFUSED: ${refused.why}`);
     break;
   }
   try {
@@ -145,5 +162,6 @@ for (const file of files) {
   }
 }
 
+if (skipped) console.log(`\n(${skipped} migration(s) already applied, skipped)`);
 await client.end();
 process.exit(failed ? 1 : 0);

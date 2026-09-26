@@ -66,7 +66,12 @@ select proname, prosecdef, proacl from pg_proc p
 
 ## Applying from this machine
 
-`node scripts/db.mjs <file.sql> [...]` applies files in order against `SUPABASE_DB_URL`
+Day to day use the npm scripts (`db:setup`, `db:migrate`, `db:test`, `db:status`,
+`db:reset`; see the root `README.md` section 1). A directory argument stands for its
+`.sql` files in name order; migrations reached that way that are already applied are
+skipped, while a migration named explicitly gets the strict checks below.
+
+`node scripts/db.mjs <file.sql|dir> [...]` applies files in order against `SUPABASE_DB_URL`
 from `.env` (session pooler URI, port 5432). It refuses to run unless `.env` sets
 `SUPABASE_DB_TARGET=development` and `SUPABASE_DB_URL` is the same project as
 `SUPABASE_URL`. A production run needs `SUPABASE_DB_TARGET=production` **and** the
@@ -85,7 +90,9 @@ JWT claims they set must include both `sub` and `role` to match a real access to
 `database/dev/reset.sql` (development only) drops everything the repo creates, keeping
 logins and Supabase's own objects. Then run `schema.sql`, every migration in order,
 `database/dev/relink_users.sql` (gives surviving logins their `public.users` row back as
-customers — restore staff roles by hand) and the tests. It can be one `db.mjs` batch.
+customers — restore staff roles by hand) and the tests. `npm run db:reset` does all of
+it except the tests. The runner also refuses `schema.sql` once `schema_migrations` exists:
+it is not transactional and would half-apply to a built database.
 
 ## Tests
 

@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:setup": "node scripts/db.mjs database/schema.sql database/migrations",
+    "db:migrate": "node scripts/db.mjs database/migrations",
+    "db:test": "node scripts/db.mjs database/tests",
+    "db:status": "node scripts/db.mjs --status",
+    "db:reset": "node scripts/db.mjs database/dev/reset.sql database/schema.sql database/migrations database/dev/relink_users.sql"
   },
   "dependencies": {
     "next": "latest",
