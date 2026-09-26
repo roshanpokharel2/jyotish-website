@@ -21,7 +21,8 @@ begin
     raise exception 'FAIL: commission seed is % , expected 15',
       public.setting_num('consultation_commission_percent');
   end if;
-  if public.setting_num('reservation_minutes') <> 10 then
+  -- Raised from 10 to 20 by 0018 (time to pay and upload proof).
+  if public.setting_num('reservation_minutes') <> 20 then
     raise exception 'FAIL: reservation_minutes seed is wrong';
   end if;
   if public.setting('default_currency') <> '"NPR"'::jsonb then

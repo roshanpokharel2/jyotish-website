@@ -339,7 +339,7 @@ try {
     && Date.parse(booked.endsAt) - Date.parse(booked.startsAt) === 30 * 60e3 && Date.parse(booked.startsAt) === Date.parse(at(0))
     && booked.notes === 'Career question', r);
   const holdMinutes = (Date.parse(booked?.holdExpiresAt) - sentAt) / 60e3;
-  check('book: slot held for about 10 minutes', holdMinutes > 9 && holdMinutes < 11, booked?.holdExpiresAt);
+  check('book: slot held for about 20 minutes', holdMinutes > 19 && holdMinutes < 21, booked?.holdExpiresAt);
   check('book: subject stored trimmed, unknown fields dropped',
     booked?.subject?.name === 'Ram' && booked.subject.dobAd === '1990-01-15' && booked.subject.tob === '05:30'
     && booked.subject.dobBs?.year === 2046 && Object.keys(booked.subject).sort().join() === 'country,dobAd,dobBs,name,pob,tob', booked?.subject);

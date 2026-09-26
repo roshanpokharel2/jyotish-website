@@ -127,7 +127,7 @@ begin
   if b.status <> 'payment_pending' or b.ends_at <> at10 + interval '30 minutes'
      or b.price_snapshot <> 1000 or b.currency <> 'NPR' or b.commission_percent_snapshot <> 15
      or b.consultation_mode <> 'audio_video' or b.service_id <> call_svc
-     or b.hold_expires_at <> now() + interval '10 minutes' then
+     or b.hold_expires_at <> now() + make_interval(mins => public.setting_num('reservation_minutes', 10)::int) then
     raise exception 'FAIL: booking fields not taken from the database: %', row_to_json(b);
   end if;
   if exists (select 1 from public.available_slots(jyotish, call_svc, day, day) where starts_at = at10) then
