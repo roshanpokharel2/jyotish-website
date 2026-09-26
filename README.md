@@ -143,7 +143,7 @@ Nobody can approve their own practitioner application, so use a **second** accou
 | `npm run db:migrate` | Applies only the migrations this database does not have yet — run it after pulling |
 | `npm run db:test` | Runs every database test |
 | `npm run db:status` | Lists which migrations this database has |
-| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Creates and deletes throwaway users |
+| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Covers `/api/me` and the chat endpoints; creates and deletes throwaway users and chat files |
 | `npm run db:reset` | **Development only. Deletes all app data** and rebuilds from scratch. Logins survive but come back as plain customers — redo step 1.5 part 2 |
 
 To add a migration, read `database/migrations/README.md` first: new files are numbered,
@@ -249,11 +249,11 @@ created the same way.
 
 ## 9. How to test customer ↔ astrologer chat
 
-**Not usable yet.** Since Phase 1 Checkpoint E the database only accepts chat messages
-through the rules in `0010_chat_rls.sql`, and creating conversations and uploading files
-move to server endpoints (Checkpoint I). The chat page is repaired in Checkpoint J, and
-this section is rewritten then. Until then, `database/tests/0010_chat_rls_test.sql` is the
-reference for what chat allows.
+**Not usable from the chat page yet.** The database accepts text messages under the
+rules in `0010_chat_rls.sql`; opening and closing conversations, read state and file
+uploads are server endpoints under `app/api/chat/` (Checkpoint I), exercised end to end by
+`npm run test:server`. The chat page is switched to them in Checkpoint J, and this section
+is rewritten then.
 
 ---
 

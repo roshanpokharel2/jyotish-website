@@ -65,7 +65,7 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–H
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–I
 done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
@@ -454,11 +454,55 @@ key appears nowhere in `.next` or the repo (outside `.env`); a server started wi
 publishable key in place of the secret returns a generic 500 and logs only the variable
 name.
 
-**Not done here** No write endpoints yet (Checkpoint I adds request-body limits and
-validation with the first one). No rate limiting. `auth.getUser` costs one Auth round
+**Not done here** No write endpoints yet (added in Checkpoint I, with request-body
+limits and validation). No rate limiting. `auth.getUser` costs one Auth round
 trip per request; local JWT verification is an option if that ever matters.
 
 **Rollback** Delete `app/api` and `lib/server`; nothing in the database depends on them.
+
+#### Checkpoint I — chat server endpoints ✅ (running against development)
+
+**What** Four routes, all behind `requireUser()` (so blocked customers are refused):
+- `POST /api/chat/conversations` `{ astrologerId }` — opens the caller's general
+  conversation with an **active** practitioner, or returns the open one. Concurrent
+  opens converge on one row (the 0010 unique index; a `23505` re-reads). Participants
+  are upserted on every open, so a half-created conversation heals. Not with yourself.
+- `POST /api/chat/conversations/:id/close` — either participant; idempotent.
+- `POST /api/chat/conversations/:id/read` — sets the caller's `last_read_at` to server time.
+- `POST /api/chat/conversations/:id/attachments` — multipart, one `file`. Type decided by
+  the file's **first bytes** (JPEG / PNG / PDF), never the name or declared type; 10 MB;
+  stored at `chat-attachments/{conversation}/{random}.{ext}`; posted as the caller's
+  `image` / `file` message plus a `message_attachments` row. A failed later step removes
+  the message and the file. Closed conversation → 409.
+- Anything that is not an active participant of the conversation (including a malformed
+  id) gets 404, so ids cannot be probed.
+- `lib/server/http.js`: `readBody` (streams, 413 past the cap whatever Content-Length
+  says), `readJson` (JSON object only, 4 KB default, 415 / 400), `isUuid`.
+  `lib/server/chat.js`: participant lookup, content sniffing, file-name cleaning.
+
+Text messages still go straight from the browser under the 0010 policy; the server only
+does what the browser is not trusted to do.
+
+**Why** 0010/0011 removed the browser's ability to create conversations, write read
+state and upload chat files; these endpoints are the replacement.
+
+**Test** Before: every new route → 404 (verified by building without `app/api/chat`:
+the chat checks fail). After, `npm run test:server`, 58 checks, including: browser cannot
+create a conversation directly (RLS); open refuses no token, non-JSON, malformed JSON,
+array body, non-uuid, body over 4 KB, unknown / suspended practitioner, blocked customer,
+self; three concurrent opens → one conversation; stranger → 404 on read / attach / close;
+a practitioner cannot close another customer's conversation; HTML renamed `.png` → 415;
+empty, two files, non-multipart, over 10 MB refused and leave no rows or files; `../`
+in a file name is stripped; the other participant can download, a stranger cannot;
+after close text posts and uploads are refused, history stays readable, and opening
+again starts a new conversation. Test users and files are removed. No database change.
+
+**Not done here** The browser still uses its old chat code (Checkpoint J switches it to
+these endpoints). No rate limiting (with the payment endpoints). Uploads are buffered in
+memory, up to 10 MB each. A suspended practitioner's existing conversations stay open;
+`message_reads` and per-message `read_at` are unused (read state is `last_read_at`).
+
+**Rollback** Delete `app/api/chat` and `lib/server/chat.js`; no database change.
 
 ---
 

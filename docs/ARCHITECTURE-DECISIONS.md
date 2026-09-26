@@ -175,6 +175,8 @@ also practises needs a second reviewer.
 - **The browser only posts text.** File/system messages, attachment rows, conversation
   creation, closing and read state are server operations (Next.js, Checkpoint I), which
   validate first and then write with the service role.
+  Endpoints: `app/api/chat/conversations/**` (Checkpoint I). An uploaded file's type is
+  decided by its content, never its name or the browser's declared type.
 - **Messages are immutable.** No edit, no delete, no client-chosen timestamps.
 - **Files follow the same rule** (0011). `chat-attachments` is private and has no browser
   upload policy; participants read `{conversation_id}/…`. No bucket lets the browser
