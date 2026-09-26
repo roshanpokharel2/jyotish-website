@@ -724,6 +724,44 @@ try {
   r = await call(`${REFUNDS}/queue`, { headers: bearer(f.token) });
   check('refunds: queue empty once finished', r.status === 200 && r.body?.refunds?.length === 0, r.body);
 
+  // ---- knowledge moderation (16c) -------------------------------------------------------
+  // Fail-before: without 16c these routes 404.
+  await admin.from('users').update({ role: 'jyotish' }).eq('id', a.id);
+  const draft = await a.db.from('knowledge_items')
+    .insert({ content_type: 'article', title: 'Shani Sade Sati', body: 'Saturn...', language: 'en' }).select('id, author_id, status').single();
+  check('knowledge: practitioner drafts (author forced, draft forced)',
+    !draft.error && draft.data?.author_id === a.id && draft.data?.status === 'draft', draft);
+  const custDraft = await c.db.from('knowledge_items')
+    .insert({ content_type: 'article', title: 'Mine', body: 'x' });
+  check('knowledge: customer cannot author', !!custDraft.error, custDraft.error?.message);
+  const KNOW = (id) => `/api/knowledge/${id}`;
+  r = await postJson(`${KNOW(draft.data?.id ?? crypto.randomUUID())}/submit`, a, {});
+  check('knowledge: submit -> 200 pending_review', r.status === 200 && r.body?.item?.status === 'pending_review', r);
+  r = await postJson(`${KNOW(draft.data?.id ?? crypto.randomUUID())}/submit`, a, {});
+  check('knowledge: double submit -> 409', r.status === 409, r);
+  r = await call('/api/knowledge/queue', { headers: bearer(f.token) });
+  check('knowledge: finance cannot moderate -> 403', r.status === 403, r);
+  r = await call('/api/knowledge/queue', { headers: bearer(s.token) });
+  check('knowledge: moderator queue lists it with author',
+    r.status === 200 && r.body?.items?.length === 1 && r.body.items[0]?.author?.email === a.email, r.body);
+  r = await postJson(`${KNOW(draft.data?.id ?? crypto.randomUUID())}/moderate`, a, { decision: 'published' });
+  check('knowledge: author cannot moderate -> 403', r.status === 403, r);
+  r = await postJson(`${KNOW(draft.data?.id ?? crypto.randomUUID())}/moderate`, s, { decision: 'published' });
+  check('knowledge: moderator publishes -> 200', r.status === 200 && r.body?.item?.status === 'published', r);
+  const { data: modAudit } = await admin.from('audit_log').select('actor_user_id')
+    .eq('entity_id', draft.data?.id ?? crypto.randomUUID()).eq('action', 'knowledge.published');
+  check('knowledge: moderation audited', modAudit?.length === 1 && modAudit[0]?.actor_user_id === s.id, modAudit);
+  const seenKnowledge = await browser().from('knowledge_items').select('id, title').eq('id', draft.data?.id ?? crypto.randomUUID());
+  check('knowledge: visitors read the published piece', seenKnowledge.data?.length === 1, seenKnowledge);
+  r = await postJson(`${KNOW(draft.data?.id ?? crypto.randomUUID())}/moderate`, s, { decision: 'archived' });
+  check('knowledge: moderator archives -> 200', r.status === 200 && r.body?.item?.status === 'archived', r);
+  const goneKnowledge = await browser().from('knowledge_items').select('id').eq('id', draft.data?.id ?? crypto.randomUUID());
+  check('knowledge: archived pieces leave the public eye', goneKnowledge.data?.length === 0, goneKnowledge);
+  const auditSelf = await c.db.from('audit_log').select('id');
+  check('audit: customer reads none', auditSelf.data?.length === 0, auditSelf);
+  const auditStaff = await f.db.from('audit_log').select('id', { count: 'exact', head: true });
+  check('audit: finance reads the trail', (auditStaff.count ?? 0) > 0, auditStaff);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);

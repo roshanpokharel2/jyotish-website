@@ -226,6 +226,8 @@ async function renderMyAccount(){
   if(accIsReviewer()) tabs.push(['payments', t.payReview.title]);
   if(accIsReviewer()) tabs.push(['refunds', t.rf.title]);
   if(accIsReviewer()) tabs.push(['payouts', t.po.title]);
+  if(['jyotish','moderator','admin','super_admin'].includes(accRole)) tabs.push(['knowledge', t.kn.title]);
+  if(['finance','admin','super_admin'].includes(accRole)) tabs.push(['audit', t.au.title]);
   if(!tabs.some(tab => tab[0] === accTab)) accTab = 'profile';
 
   grid.innerHTML = `
@@ -242,6 +244,8 @@ async function renderMyAccount(){
   if(accTab === 'payments') return renderPaymentsQueue(body);
   if(accTab === 'refunds') return renderRefundsQueue(body);
   if(accTab === 'payouts') return renderPayoutsQueue(body);
+  if(accTab === 'knowledge') return renderKnowledgeTab(body);
+  if(accTab === 'audit') return renderAuditTab(body);
 }
 
 function renderAccountProfile(body){
@@ -633,6 +637,119 @@ async function payoutAction(id, action){
   const result = await response.json().catch(()=>({}));
   if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
   renderMyAccount();
+}
+
+/* ============================================================
+   KNOWLEDGE (authors draft, moderators decide)
+   Drafts are written straight to the table (RLS admits authors only, as
+   drafts); submitting and moderating go through the server endpoints.
+============================================================ */
+
+async function renderKnowledgeTab(body){
+  const t = T[LANG].kn;
+  const token = await accToken();
+  const client = getMainSupabase();
+  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
+  const isMod = ['moderator','admin','super_admin'].includes(accRole);
+
+  const { data: mine } = await client.from('knowledge_items')
+    .select('id,content_type,title,status,language,created_at')
+    .order('created_at', { ascending:false }).limit(20);
+
+  let queue = [];
+  if(isMod){
+    try{
+      const response = await fetch('/api/knowledge/queue', { headers:{ Authorization:`Bearer ${token}` } });
+      const result = await response.json();
+      if(response.ok) queue = result.items ?? [];
+    } catch(err){ console.warn('Knowledge queue failed:', err); }
+  }
+
+  const row = (k, actions) => `
+    <div class="review-row" style="align-items:flex-start;gap:12px;">
+      <span><b>${escapeHtml(k.title)}</b><br><small>${escapeHtml(k.content_type)} · ${escapeHtml(k.language)} · ${escapeHtml(t.st[k.status] || k.status)}</small></span>
+      <span style="display:flex;gap:8px;flex-shrink:0;">${actions}</span>
+    </div>`;
+  const btn = (id, action, label, gold) =>
+    `<button class="btn ${gold ? 'btn-gold' : 'btn-ghost'}" onclick="knowledgeAction('${escapeHtml(id)}','${action}')">${escapeHtml(label)}</button>`;
+
+  body.innerHTML = `
+    <div style="padding:14px;border:1px solid var(--gold);border-radius:10px;margin-bottom:14px;">
+      <h4 style="margin:0 0 8px;">${escapeHtml(t.newDraft)}</h4>
+      <div class="field"><label>${escapeHtml(t.titleL)}</label><input id="knTitle" maxlength="200"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <div class="field" style="flex:1;"><label>${escapeHtml(t.typeL)}</label><select id="knType"><option value="article">article</option><option value="faq">faq</option></select></div>
+        <div class="field" style="flex:1;"><label>${escapeHtml(t.languageL)}</label><select id="knLang"><option value="ne">ne</option><option value="en">en</option><option value="hi">hi</option><option value="sa">sa</option></select></div>
+      </div>
+      <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.bodyL)}</label><textarea rows="4" id="knBody"></textarea></div>
+      <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="submitKnowledgeDraft()">${escapeHtml(t.save)}</button>
+      <div id="knMsg"></div>
+    </div>
+    <h4 style="margin:14px 0 6px;">${escapeHtml(t.mine)}</h4>
+    ${(mine ?? []).map(k => row(k,
+      (k.status === 'draft' || k.status === 'rejected') ? btn(k.id, 'submit', t.submit, true) : ''
+    )).join('') || `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`}
+    ${isMod ? `<h4 style="margin:14px 0 6px;">${escapeHtml(t.queue)}</h4>` +
+      queue.map(k => `
+      <div class="review-row" style="align-items:flex-start;gap:12px;">
+        <span><b>${escapeHtml(k.title)}</b><br><small>${escapeHtml(k.author?.email || '')} · ${escapeHtml(k.content_type)} · ${escapeHtml(k.language)}</small><br><small>${escapeHtml((k.body || '').slice(0, 300))}</small></span>
+        <span style="display:flex;gap:8px;flex-shrink:0;">${btn(k.id, 'publish', t.publish, true)}${btn(k.id, 'reject', t.reject, false)}</span>
+      </div>`).join('') || '' : ''}`;
+}
+
+async function submitKnowledgeDraft(){
+  const t = T[LANG].kn;
+  const msg = document.getElementById('knMsg');
+  const title = document.getElementById('knTitle')?.value.trim();
+  const body = document.getElementById('knBody')?.value.trim();
+  if(!title || !body){
+    if(msg) msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(T[LANG].validationRequired)}</div>`;
+    return;
+  }
+  const { error } = await getMainSupabase().from('knowledge_items').insert({
+    content_type: document.getElementById('knType')?.value || 'article',
+    title, body, language: document.getElementById('knLang')?.value || 'ne'
+  });
+  if(error){
+    if(msg) msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  if(typeof showToast === 'function') showToast(t.done);
+  renderMyAccount();
+}
+
+async function knowledgeAction(id, action){
+  const t = T[LANG].kn;
+  const token = await accToken();
+  if(!token) return;
+  const path = action === 'submit' ? 'submit' : 'moderate';
+  const response = await fetch(`/api/knowledge/${encodeURIComponent(id)}/${path}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify(action === 'submit' ? {} : { decision: action })
+  });
+  const result = await response.json().catch(()=>({}));
+  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
+  renderMyAccount();
+}
+
+/* ============================================================
+   AUDIT LOG (finance, admin, super_admin)
+   The immutable trail, newest first. Reads ride the existing policy.
+============================================================ */
+
+async function renderAuditTab(body){
+  const t = T[LANG].au;
+  const { data, error } = await getMainSupabase().from('audit_log')
+    .select('created_at,actor_role,action,entity_type,reason')
+    .order('created_at', { ascending:false }).limit(50);
+  if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
+  if(!data?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
+  body.innerHTML = data.map(row => `
+    <div class="review-row">
+      <span><b>${escapeHtml(row.action)}</b><br><small>${escapeHtml(row.entity_type)} · ${escapeHtml(row.actor_role || '—')}${row.reason ? ` · ${escapeHtml(row.reason)}` : ''}</small></span>
+      <small>${escapeHtml(new Date(row.created_at).toLocaleString())}</small>
+    </div>`).join('');
 }
 
 /* ============================================================
