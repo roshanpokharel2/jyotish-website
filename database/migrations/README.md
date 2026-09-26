@@ -36,6 +36,7 @@ self-record makes a duplicate fail — but it skips the runner's order checks.
 | `0010_chat_rls.sql` | Phase 1 E | Chat policies scoped to the specific conversation via `is_chat_participant()`; text-only browser posts, no message edits; attachment rows server-only; one open conversation per pair |
 | `0011_storage_buckets.sql` | Phase 1 F | `chat-attachments` / `vastu-files` created; all buckets private, 10 MB, JPEG/PNG/PDF; no browser chat uploads; Vastu uploads tied to own project; only reviewers read credential documents |
 | `0012_schema_migrations.sql` | Phase 1 G | `schema_migrations` table (no API access); migrations from here on record themselves; 0001–0011 deliberately not recorded |
+| `0013_services.sql` | 7 | Services catalog: practitioner, type, slug, mode, duration, currency, status; active services must be complete; public read of active services, admin-only writes, no deletes; seeded from the site's prices; `is_active_astrologer()` |
 
 ## Function privileges — read this before adding a `security definer` function
 

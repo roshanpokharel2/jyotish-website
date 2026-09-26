@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–K
-done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening done (Checkpoints A–K, see
+below). Step 7 done (services catalog). The project in `.env` is the **development** database; 0001–0013 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -631,26 +631,57 @@ that loaded the page; that is intended and not undone.
 
 ---
 
-### Step 7 — Services and consultation modes
+### Step 7 — Services catalog — `0013_services.sql` ✅ (applied to development)
 
-**What** Reuse `services`, do not create a new table. Add:
-`astrologer_id` (fk, nullable for legacy platform-wide rows), `consultation_type_id`,
-`slug`, `duration_minutes`, `currency`, `consultation_mode` check
-(`audio | video | audio_video | chat | in_person`), `status`
-(`draft|active|inactive|archived`), `updated_at`.
-Keep `consultation_types` as the taxonomy (ONLINE/DIRECT/QUESTION) — services reference it.
+**What**
+- `services` extended (AD-3): `astrologer_id` (null = offered by the platform with any
+  practitioner), `consultation_type_id` (the ONLINE / DIRECT / QUESTION taxonomy),
+  `slug` (unique per owner, platform rows counted as one owner), `consultation_mode`
+  (`audio | video | audio_video | chat | in_person | question`), `duration_minutes`
+  (5–480), `currency` (`NPR` only), `status` (`draft | active | inactive | archived`),
+  `updated_at` (database time, whatever the writer sends). `price` is now `not null`, ≥ 0.
+- **An `active` service must be complete**: slug, type, mode, price above zero, and a
+  duration unless the mode is `chat` / `question`. A constraint, so nothing
+  half-defined can be sold whatever code writes it.
+- **Reads:** anyone, signed in or not, reads active services whose practitioner (if any)
+  is active, through `is_active_astrologer()` (visitors cannot read `astrologers`). A
+  practitioner also reads their own; staff read all.
+- **Writes: admin / super_admin only.** Practitioners do not create or re-price
+  services, not even their own (AD-13 — this replaces the earlier plan of practitioner
+  self-service with a WITH CHECK). No delete policy for anyone: bookings will reference
+  services, so they are retired with `archived`. `is_active` stays for old readers and
+  follows `status`.
+- Seeded from the prices the site shows: live call (audio/video), live online chart
+  (video), live Q&A (chat) NPR 1,000 each; chat consultation NPR 600; question NPR 100.
+  All platform-wide. Direct consultation is `draft` (the site says "contact for price").
 
-**Why** Architecture §6/7. Modes are a column, not three parallel systems.
+**Why** Prices existed only as display text in `script.js`, and `services` had RLS on
+with no policy, so nothing — browser or server — could read a price. The booking and
+payment steps must take price and duration from the database, never from the request.
 
-**Depends on** Step 6.
+**Test** `database/tests/0013_services_test.sql`: fails before 0013 (the columns do not
+exist; a visitor read of `services` returned 0 rows), passes after; 0002–0012 still pass.
+Covers: seeded catalog matches the site; visitors see exactly the active services;
+visitor, customer, moderator and practitioner cannot create, re-price or delete (own
+service or a rival's); admin creates practitioner services; free, duration-less,
+unknown-mode, foreign-currency and negative-price services refused; duplicate slugs
+refused per owner, allowed across owners; `is_active` / `updated_at` cannot be forged;
+admins cannot delete; a practitioner sees their own service, not a rival's draft; a
+suspended practitioner's services leave the public catalog and come back on
+reactivation. Plus the public REST API with the anon key: GET returns the five active
+services; PATCH and DELETE change nothing; POST → 401 `42501`. The runner refuses a
+second application of 0013.
 
-**Files** `database/migrations/0006_services.sql`; jyotish dashboard service CRUD module.
+**Not done here**
+- The browser still shows the hard-coded prices; the booking form reads the catalog in
+  the booking-flow checkpoint.
+- No admin UI: prices are changed in the SQL editor (README section 3).
+- Durations (30 minutes) are placeholders — the site never stated them.
+- No practitioner-specific services exist yet (there is no active practitioner in
+  development); the model supports them.
 
-**Test** A jyotish can create a service on their own profile only; setting
-`astrologer_id` to another practitioner is rejected by the WITH CHECK clause.
-
-**Security** RLS WITH CHECK must verify `astrologer_id` resolves to `auth.uid()`, or a
-jyotish can publish services under a rival's profile.
+**Rollback** Fix forward. The table had no readers or writers before, so reverting the
+browser later is unaffected; dropping the policies only makes the catalog unreadable again.
 
 ---
 

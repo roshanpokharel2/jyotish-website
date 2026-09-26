@@ -40,6 +40,10 @@ per-practitioner services. Adding `astrologer_id`, `duration_minutes`, `consulta
 table plus a data migration. `consultation_types` is kept as the taxonomy
 (ONLINE / DIRECT / QUESTION) that services reference.
 
+**As built (0013):** a null `astrologer_id` is a platform-wide service, bookable with any
+practitioner. Only admin / super_admin write services (AD-13); practitioners read their
+own. Services are archived, never deleted, because bookings will reference them.
+
 ---
 
 ## AD-4 — Consultation mode is a column, not three subsystems

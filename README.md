@@ -195,6 +195,13 @@ This schema includes:
 
 The design is structured so that more astrologers, multiple consultation types, assignments, billing, and future dashboards can be added without replacing the backend.
 
+**Services and prices** live in `services` (0013). Anyone can read the active ones;
+only an `admin` / `super_admin` changes them, and until the admin dashboard exists that is
+done in the SQL editor, for example
+`update public.services set price = 1200 where slug = 'live-call' and astrologer_id is null;`.
+A service goes `active` only when it has a mode, a price above zero and (for timed modes)
+a duration. Retire one with `status = 'archived'`; services are never deleted.
+
 ---
 
 ## 4. Authentication setup
