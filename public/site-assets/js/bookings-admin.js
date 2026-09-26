@@ -19,6 +19,33 @@ const BOOKING_RECORD_TYPES = {
   contact:'Contact request'
 };
 
+// System internals the customer never needs to see (duplicates and write
+// confirmations); the JSON download keeps everything.
+const RECORD_HIDDEN_KEYS = new Set(['productId', 'submitted']);
+const RECORD_LABEL_ALIASES = { qty:'Quantity' };
+const RECORD_LOCALES = { ne:'ne-NP', en:'en-GB', hi:'hi-IN', sa:'sa-IN' };
+const RECORD_STATUS = {
+  ne:{ new:'नयाँ', in_progress:'जारी', completed:'सम्पन्न', cancelled:'रद्द' },
+  en:{ new:'New', in_progress:'In progress', completed:'Completed', cancelled:'Cancelled' },
+  hi:{ new:'नया', in_progress:'जारी', completed:'पूर्ण', cancelled:'रद्द' },
+  sa:{ new:'नूतनम्', in_progress:'प्रचलत्', completed:'सम्पन्नम्', cancelled:'रद्दम्' }
+};
+
+// "orderId" -> "Order ID", "productName" -> "Product Name".
+function recordLabel(key){
+  if(RECORD_LABEL_ALIASES[key]) return RECORD_LABEL_ALIASES[key];
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\bId\b/g, 'ID').replace(/^./, c=>c.toUpperCase());
+}
+
+// "9/26/2026, 4:08:34 PM · new" -> locale date without seconds, translated status.
+function recordKey(created, status){
+  const lang = (typeof LANG !== 'undefined' && LANG) || 'ne';
+  const when = new Date(created).toLocaleString(RECORD_LOCALES[lang] || 'en-GB',
+    { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  const st = (RECORD_STATUS[lang] || RECORD_STATUS.en)[status] || status;
+  return `${when} · ${st}`;
+}
+
 async function getBookingAdminRecords(){
   const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
   if(!client || !mainAuthUser) return null;
@@ -35,19 +62,21 @@ async function getBookingAdminRecords(){
   ]);
   if(requests.error) console.warn('Booking records unavailable:', requests.error);
   if(bookings.error) console.warn('Bookings unavailable:', bookings.error);
+  const lang = (typeof LANG !== 'undefined' && LANG) || 'ne';
+  const rtypes = (typeof T !== 'undefined' && T[lang] && T[lang].recordTypes) || {};
   const records = (requests.data || []).map(row=>{
     const payload = row.payload || {};
     return {
       created:row.created_at,
-      key:`${new Date(row.created_at).toLocaleString()} · ${row.status}`,
-      type:BOOKING_RECORD_TYPES[row.request_type] || row.request_type,
+      key:recordKey(row.created_at, row.status),
+      type:rtypes[row.request_type] || BOOKING_RECORD_TYPES[row.request_type] || row.request_type,
       name:String(payload.name || payload.fullName || payload.profile?.name || 'Unnamed visitor'),
       data:payload
     };
   }).concat((bookings.data || []).map(row=>({
     created:row.created_at,
-    key:`${new Date(row.scheduled_at).toLocaleString()} · ${row.status}`,
-    type:row.services?.name || BOOKING_RECORD_TYPES.booking,
+    key:recordKey(row.scheduled_at, row.status),
+    type:row.services?.name || rtypes.booking || BOOKING_RECORD_TYPES.booking,
     name:String(row.subject?.name || 'Unnamed visitor'),
     data:{ reference:row.id.slice(0,8).toUpperCase(), status:row.status, startsAt:row.scheduled_at, endsAt:row.ends_at,
       mode:row.consultation_mode, price:row.price_snapshot, currency:row.currency, notes:row.notes, subject:row.subject }
@@ -56,7 +85,15 @@ async function getBookingAdminRecords(){
 }
 
 function recordText(record){
-  return JSON.stringify(record.data, null, 2);
+  // The same payload as the JSON download, but as readable rows: scalars as
+  // key/value lines, nested objects (birth details) as compact inline JSON.
+  const data = record.data && typeof record.data === 'object' ? record.data : {};
+  const entries = Object.entries(data).filter(([key])=>!RECORD_HIDDEN_KEYS.has(key));
+  if(!entries.length) return '—';
+  return entries.map(([key, value])=>{
+    const shown = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—');
+    return `<div class="review-row"><span>${escapeHtml(recordLabel(key))}</span><b>${escapeHtml(shown)}</b></div>`;
+  }).join('');
 }
 
 function downloadJson(filename, value){
@@ -97,6 +134,8 @@ async function renderBookingsAdmin(){
   const records = await getBookingAdminRecords();
   if(load !== bookingAdminLoad) return; // a newer render (language, sign-in) won
   const t = T[LANG];
+  setText('bookingsRefreshEl', t.bookingsRefresh);
+  setText('bookingsExportEl', t.bookingsExportAll);
   if(records === null){
     bookingAdminRecords = [];
     setText('bookingsCountEl', '');
@@ -113,7 +152,7 @@ async function renderBookingsAdmin(){
   panel.innerHTML = groups.map((group,index)=>`
     <details class="booking-record-folder" ${index===0?'open':''}>
       <summary><span><strong>${escapeHtml(group.name)}</strong><small>${group.records.length} ${t.bookingsRecordsLabel}</small></span><button type="button" class="btn btn-ghost record-download" onclick="event.preventDefault();downloadBookingPerson(${index})">${t.bookingsDownloadPerson}</button></summary>
-      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
+      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><div class="booking-record-detail">${recordText(record)}</div></details>`).join('')}</div>
     </details>`).join('');
 }
 
