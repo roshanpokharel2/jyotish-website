@@ -143,7 +143,7 @@ Nobody can approve their own practitioner application, so use a **second** accou
 | `npm run db:migrate` | Applies only the migrations this database does not have yet — run it after pulling |
 | `npm run db:test` | Runs every database test |
 | `npm run db:status` | Lists which migrations this database has |
-| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Covers `/api/me` and the chat endpoints; creates and deletes throwaway users and chat files |
+| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Covers `/api/me`, the chat endpoints and realtime delivery; creates and deletes throwaway users and chat files |
 | `npm run db:reset` | **Development only. Deletes all app data** and rebuilds from scratch. Logins survive but come back as plain customers — redo step 1.5 part 2 |
 
 To add a migration, read `database/migrations/README.md` first: new files are numbered,
@@ -218,7 +218,9 @@ browser; participants read them.
 ## 6. Realtime setup
 
 Nothing to enable by hand: `schema.sql` adds `chat_messages`, `chat_conversations` and
-`chat_participants` to the `supabase_realtime` publication. The browser app uses `supabase.channel(...).on('postgres_changes', ...)` to receive live messages.
+`chat_participants` to the `supabase_realtime` publication. The chat page subscribes with
+`supabase.channel(...).on('postgres_changes', ...)`; Realtime applies the same RLS as a
+query, so each user only receives rows they could read.
 
 ---
 
@@ -249,11 +251,23 @@ created the same way.
 
 ## 9. How to test customer ↔ astrologer chat
 
-**Not usable from the chat page yet.** The database accepts text messages under the
-rules in `0010_chat_rls.sql`; opening and closing conversations, read state and file
-uploads are server endpoints under `app/api/chat/` (Checkpoint I), exercised end to end by
-`npm run test:server`. The chat page is switched to them in Checkpoint J, and this section
-is rewritten then.
+You need two accounts: a customer (any registered account) and an **active**
+practitioner (section 1.6). Use two browsers, or a normal and a private window.
+
+1. `npm run dev`, then open <http://localhost:3000/chat> in both windows and sign in,
+   one account in each. Registration is on the main site; the chat page only signs in.
+2. As the customer, pick the practitioner under **Available astrologers**. This opens
+   (or reuses) your conversation with them.
+3. The practitioner's window lists it under **Your conversations** and opens it.
+   Messages appear in the other window without reloading.
+4. **Attachment** sends a JPG, PNG or PDF (10 MB max). Clicking a file opens it through
+   a link that expires after 60 seconds; the files themselves are private.
+5. **Close Chat** (either side) ends the conversation for both: history stays, sending
+   is disabled. Choosing the practitioner again starts a new conversation.
+
+What each step is allowed to do is enforced by the database and `app/api/chat/*`, not by
+the page. `npm run test:server` (with the app running) checks all of it automatically,
+including live delivery and that a third account receives nothing.
 
 ---
 

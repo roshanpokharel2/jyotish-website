@@ -138,6 +138,10 @@ through `reservations` → `bookings` → `payments`. The two are not merged.
 `js/` is an unserved duplicate of `public/site-assets/js/`. It is deleted rather than kept
 in sync.
 
+The legacy files are classic scripts mounted by `app/legacy-runtime.js`. They run once per
+document; a second mount reloads the page (Checkpoint J). Third-party scripts are pinned
+to an exact version, never a floating tag.
+
 ---
 
 ## AD-12 — Postponed deliberately

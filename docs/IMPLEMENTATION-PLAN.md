@@ -65,7 +65,7 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–I
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–J
 done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
@@ -503,6 +503,64 @@ memory, up to 10 MB each. A suspended practitioner's existing conversations stay
 `message_reads` and per-message `read_at` are unused (read state is `last_read_at`).
 
 **Rollback** Delete `app/api/chat` and `lib/server/chat.js`; no database change.
+
+#### Checkpoint J — chat page repair ✅ (running against development)
+
+**What**
+- `public/site-assets/chat-app.js` rewritten against 0010/0011 and Checkpoint I:
+  - role and account status from `/api/me`; the "I am signing in as" picker is gone (it
+    was only a label, but it decided which UI you got);
+  - open / close / read / attach through `/api/chat/*`; text posts and reads go direct
+    under RLS; no client-set `status`, timestamps or conversation updates;
+  - a conversation list for both sides; the practitioner is not offered themselves;
+  - conversations are opened with `astrologers.id` (the old code passed the
+    practitioner's *user* id as `astrologer_id` and the user id as `customer_id`);
+  - realtime: new messages and the other side closing arrive live; on every
+    "Subscribed to PostgreSQL" (first connect and reconnects) the page re-fetches, so
+    nothing sent in between is lost;
+  - attachments open through a 60-second signed URL fetched on click;
+  - everything rendered with `textContent` (no `innerHTML` with data);
+  - no silent sign-up on a failed sign-in, no placeholder customer
+    (`'Customer User'`, `'0000000000'`) — a first visit creates the profile row from the
+    account's name / email; status is set by the database (0008).
+- `chat-mvp.html`: markup to match; supabase-js pinned to `2.109.0` (was the floating
+  `@2`, i.e. whatever the CDN served that day) — same version as the server.
+- `app/legacy-runtime.js`: legacy scripts run **once per document**. A second mount
+  (Fast Refresh, or client-side navigation back) reloads the page instead of re-running
+  them. Keyed by content, not by the `scripts` array's identity.
+
+**Why** The page could not work at all. It waited for `DOMContentLoaded`, which has
+already fired when `LegacyRuntime` injects it, so under Next.js it never started; the
+queries it made (conversation insert, participant insert, conversation update, direct
+storage upload) are all refused since 0010/0011. The duplicate-script errors seen in the
+dev log ("Identifier 'APP' / 'mainSupabase' … has already been declared", 2 on `/chat`,
+15 on `/`) were Fast Refresh re-running classic scripts and leaving the page half-dead.
+
+**Test**
+- `npm run test:server` now also covers realtime (the npm script passes
+  `--experimental-websocket` for Node 20): the practitioner receives a customer's
+  message live and as stored; a stranger subscribed to all chat messages, filtered or
+  not, receives nothing; the other side sees a close live. 62 checks, passed on 4
+  consecutive runs; the first run, before waiting for "Subscribed to PostgreSQL",
+  missed the live message once.
+- A one-off browser run (headless Edge via playwright-core, not added to the repo),
+  against both `next dev` and a production build, customer and practitioner side by
+  side: sign-in, badge from the db role, profile row created on first visit, chat
+  opened via the server, `<b>` shown as text, practitioner's view auto-opens with the
+  message, reply arrives live, attachment sent and arrives live, opens as a signed URL,
+  both sides marked read, close disables the other side's composer live, reload keeps
+  session and history, sign-out. No page errors; the only failed request is the
+  site-wide missing `/favicon.ico`.
+- Before the runtime fix, triggering Fast Refresh logged the redeclaration errors above;
+  after it, none on either page.
+
+**Not done here** Unread counts / "seen" ticks (the data is there: `last_read_at`).
+Typing indicators, pagination (all messages load at once), image previews. Practitioners
+see "Customer consultation" rather than a name: they cannot read customer profiles
+(RLS), and exposing a display name is a separate decision. `/` still loads the floating
+`supabase-js@2` (Checkpoint K). No favicon.
+
+**Rollback** Revert the four files; no database or server change.
 
 ---
 

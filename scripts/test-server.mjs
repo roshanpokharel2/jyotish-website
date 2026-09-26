@@ -17,7 +17,10 @@ const options = {
   realtime: { transport: class { constructor() { throw new Error('no realtime in tests'); } } },
 };
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, options);
-const browser = () => createClient(env.SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, options);
+// Browser-like clients get realtime when Node has WebSocket (22+, or 20 with
+// --experimental-websocket, which the npm script passes).
+const browserOptions = typeof WebSocket === 'undefined' ? options : { auth: options.auth };
+const browser = () => createClient(env.SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, browserOptions);
 
 let failures = 0;
 const check = (label, ok, detail) => {
@@ -48,6 +51,7 @@ const PDF = Buffer.from('%PDF-1.4\n%%EOF\n');
 
 const stamp = Date.now();
 const created = [];
+const clients = [];
 const newUser = async (label) => {
   const email = `servertest-${label}-${stamp}@example.test`;
   const password = `Pw-${crypto.randomUUID()}`;
@@ -55,6 +59,7 @@ const newUser = async (label) => {
   if (error) throw error;
   created.push(data.user.id);
   const client = browser();
+  clients.push(client);
   const { data: s, error: e } = await client.auth.signInWithPassword({ email, password });
   if (e) throw e;
   return { id: data.user.id, email, token: s.session.access_token, db: client };
@@ -65,6 +70,30 @@ const addCustomer = async (u) => {
   u.customerId = data.id;
 };
 const conversationIds = new Set();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const waitFor = async (condition, ms = 10000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(200)) if (condition()) return true;
+  return condition();
+};
+// A realtime subscription as the browser makes it. Ready once Realtime reports the
+// database subscription itself ("Subscribed to PostgreSQL"), which can trail SUBSCRIBED.
+const listen = (client, name, spec) => {
+  const rows = [];
+  const ready = new Promise((resolve, reject) => {
+    setTimeout(() => reject(new Error(`realtime ${name}: not ready after 20 s`)), 20000);
+    client.channel(name)
+      .on('postgres_changes', spec, (change) => rows.push(change.new))
+      .on('system', {}, (event) => {
+        if (event.extension !== 'postgres_changes') return;
+        if (event.status === 'ok') resolve();
+        else reject(new Error(`realtime ${name}: ${event.message}`));
+      })
+      .subscribe((status, error) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(error ?? new Error(`realtime ${status}`));
+      });
+  });
+  return { rows, ready };
+};
 
 try {
   const reach = await fetch(`${base}/api/me`).catch(() => null);
@@ -160,6 +189,25 @@ try {
   const post = await c.db.from('chat_messages').insert({ conversation_id: conv?.id, sender_id: c.id, body: 'Namaste' });
   check('customer posts text directly', !post.error, post);
 
+  // ---- realtime -----------------------------------------------------------------------
+  let closedLive = null;
+  if (typeof WebSocket === 'undefined') {
+    console.log('SKIP  realtime checks (no WebSocket in this Node; use npm run test:server)');
+  } else {
+    const toPractitioner = listen(a.db, 'rt-a', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `conversation_id=eq.${conv?.id}` });
+    closedLive = listen(a.db, 'rt-a-conv', { event: 'UPDATE', schema: 'public', table: 'chat_conversations', filter: `id=eq.${conv?.id}` });
+    // The stranger asks for every chat message, no filter: RLS must still hide these.
+    const toStranger = listen(s.db, 'rt-s', { event: 'INSERT', schema: 'public', table: 'chat_messages' });
+    const toStrangerFiltered = listen(s.db, 'rt-s2', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `conversation_id=eq.${conv?.id}` });
+    await Promise.all([toPractitioner.ready, closedLive.ready, toStranger.ready, toStrangerFiltered.ready]);
+    const live = await c.db.from('chat_messages').insert({ conversation_id: conv?.id, sender_id: c.id, body: 'live?' }).select('id').single();
+    const arrived = await waitFor(() => toPractitioner.rows.some((m) => m.id === live.data?.id));
+    check('realtime: practitioner receives the message live', arrived, toPractitioner.rows);
+    check('realtime: delivered row is the stored one', toPractitioner.rows.find((m) => m.id === live.data?.id)?.body === 'live?', toPractitioner.rows);
+    await sleep(2000);
+    check('realtime: stranger receives nothing (unfiltered or filtered)', toStranger.rows.length === 0 && toStrangerFiltered.rows.length === 0, [toStranger.rows, toStrangerFiltered.rows]);
+  }
+
   // ---- read state -------------------------------------------------------------------
   const READ = (id) => `/api/chat/conversations/${id}/read`;
   r = await call(READ(conv?.id), { method: 'POST', headers: bearer(s.token) });
@@ -207,12 +255,15 @@ try {
   check('close: practitioner -> 200 closed', r.status === 200 && r.body?.conversation?.status === 'closed' && r.body.conversation.closed_at, r);
   r = await call(CLOSE(conv?.id), { method: 'POST', headers: bearer(c.token) });
   check('close again -> 200, still closed', r.status === 200 && r.body?.conversation?.status === 'closed', r);
+  if (closedLive) {
+    check('realtime: other side sees the close live', await waitFor(() => closedLive.rows.some((row) => row.status === 'closed')), closedLive.rows);
+  }
   const late = await c.db.from('chat_messages').insert({ conversation_id: conv?.id, sender_id: c.id, body: 'still there?' });
   check('closed: text post refused', !!late.error, late);
   r = await upload(conv?.id, c, [PNG, 'x.png', 'image/png']);
   check('closed: attachment -> 409', r.status === 409, r);
   const history = await c.db.from('chat_messages').select('id').eq('conversation_id', conv?.id);
-  check('closed: history still readable', history.data?.length === 3, history);
+  check('closed: history still readable', history.data?.length === (closedLive ? 4 : 3), history);
   r = await postJson(OPEN, c, { astrologerId: astro.id });
   if (r.body?.conversation) conversationIds.add(r.body.conversation.id);
   check('open after close -> a new conversation', r.status === 200 && r.body?.conversation?.id !== conv?.id, r);
@@ -242,6 +293,7 @@ try {
   failures++;
   console.error('ERROR ', error.message ?? error);
 } finally {
+  for (const client of [admin, ...clients]) await client.removeAllChannels();
   const bucket = admin.storage.from('chat-attachments');
   for (const id of conversationIds) {
     const { data } = await bucket.list(id);

@@ -1,7 +1,7 @@
 import LegacyRuntime from '../legacy-runtime';
 
 const scripts = [
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.109.0',
   '/site-assets/app-config.js',
   '/site-assets/chat-app.js',
 ];
