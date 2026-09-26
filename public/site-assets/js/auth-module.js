@@ -224,6 +224,8 @@ async function renderMyAccount(){
   ];
   if(accIsStaff()) tabs.push(['applications', t.jyotishAdmin.title]);
   if(accIsReviewer()) tabs.push(['payments', t.payReview.title]);
+  if(accIsReviewer()) tabs.push(['refunds', t.rf.title]);
+  if(accIsReviewer()) tabs.push(['payouts', t.po.title]);
   if(!tabs.some(tab => tab[0] === accTab)) accTab = 'profile';
 
   grid.innerHTML = `
@@ -238,6 +240,8 @@ async function renderMyAccount(){
   if(accTab === 'jyotish') return renderJyotishPanel(body);
   if(accTab === 'applications') return renderJyotishApplicationsQueue(body);
   if(accTab === 'payments') return renderPaymentsQueue(body);
+  if(accTab === 'refunds') return renderRefundsQueue(body);
+  if(accTab === 'payouts') return renderPayoutsQueue(body);
 }
 
 function renderAccountProfile(body){
@@ -355,7 +359,9 @@ function renderJyotishPanel(body){
       <div class="review-row"><span>${escapeHtml(t.statusLabel)}</span><b>${escapeHtml(t.status[jyotishRecord.status] || jyotishRecord.status)}</b></div>
       <div class="review-row"><span>${escapeHtml(T[LANG].authFullName)}</span><b>${escapeHtml(jyotishRecord.name)}</b></div>
       <div class="review-row"><span>${escapeHtml(t.fee)}</span><b>${escapeHtml(jyotishRecord.consultation_fee)}</b></div>
-      ${jyotishRecord.rejection_reason ? `<div class="review-row"><span>${escapeHtml(t.reason)}</span><b>${escapeHtml(jyotishRecord.rejection_reason)}</b></div>` : ''}`;
+      ${jyotishRecord.rejection_reason ? `<div class="review-row"><span>${escapeHtml(t.reason)}</span><b>${escapeHtml(jyotishRecord.rejection_reason)}</b></div>` : ''}
+      <div id="jyPayoutBox"></div>`;
+    renderPractitionerPayouts(document.getElementById('jyPayoutBox'));
     return;
   }
 
@@ -513,6 +519,216 @@ async function reviewPayment(id, action){
     method:'POST',
     headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
     body: JSON.stringify(action === 'reject' ? { reason } : {})
+  });
+  const result = await response.json().catch(()=>({}));
+  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
+  renderMyAccount();
+}
+
+/* ============================================================
+   PRACTITIONER PAYOUTS
+   The practitioner's own payable balance (my_payout_balance), a request form,
+   and their request history. Requesting posts to /api/payouts, which checks
+   ownership, floor and balance against the database.
+============================================================ */
+
+async function renderPractitionerPayouts(box){
+  if(!box) return;
+  const t = T[LANG].po;
+  const client = getMainSupabase();
+  const [bal, mine] = await Promise.all([
+    client.rpc('my_payout_balance').maybeSingle(),
+    client.from('payouts').select('id,amount,currency,status,created_at').order('created_at', { ascending:false }).limit(10)
+  ]);
+  const payable = bal.data?.payable ?? null;
+  box.innerHTML = `
+    <h4 style="margin:18px 0 6px;">${escapeHtml(t.title)}</h4>
+    <div class="review-row"><span>${escapeHtml(t.balance)}</span><b>${payable == null ? '—' : escapeHtml(`${bal.data.currency} ${payable}`)}</b></div>
+    <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.amount)}</label><input id="poAmount" type="number" min="1" step="0.01"></div>
+    <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="submitPayoutRequest()">${escapeHtml(t.request)}</button>
+    <div id="poMsg"></div>
+    ${(mine.data ?? []).map(row => `
+      <div class="review-row"><span><b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)}</b><br><small>${escapeHtml(new Date(row.created_at).toLocaleDateString())}</small></span><b>${escapeHtml(t.st[row.status] || row.status)}</b></div>`).join('')}`;
+}
+
+async function submitPayoutRequest(){
+  const t = T[LANG].po;
+  const session = (await getMainSupabase().auth.getSession()).data.session;
+  const msg = document.getElementById('poMsg');
+  if(!session) return;
+  const response = await fetch('/api/payouts', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}` },
+    body: JSON.stringify({ astrologerId: jyotishRecord?.id, amount: Number(document.getElementById('poAmount')?.value) })
+  });
+  const result = await response.json().catch(()=>({}));
+  if(!response.ok && msg){
+    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(result.error?.message || t.done)}</div>`;
+    return;
+  }
+  if(typeof showToast === 'function') showToast(t.done);
+  renderMyAccount();
+}
+
+/* ============================================================
+   PAYOUT QUEUE (finance, admin, super_admin)
+============================================================ */
+
+async function renderPayoutsQueue(body){
+  const t = T[LANG].po;
+  const token = await accToken();
+  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
+
+  let queue = { payouts: [] };
+  try{
+    const response = await fetch('/api/payouts/queue', { headers:{ Authorization:`Bearer ${token}` } });
+    queue = await response.json();
+    if(!response.ok) throw new Error(queue.error?.message || t.none);
+  } catch(err){
+    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
+    return;
+  }
+  if(!queue.payouts?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
+
+  body.innerHTML = queue.payouts.map(row => {
+    const actions = [];
+    if(row.status === 'pending') actions.push(['approve', t.approve], ['cancel', t.cancel]);
+    if(row.status === 'approved') actions.push(['process', t.process], ['cancel', t.cancel]);
+    if(row.status === 'processing') actions.push(['pay', t.pay], ['fail', t.fail], ['cancel', t.cancel]);
+    if(row.status === 'failed') actions.push(['process', t.process], ['cancel', t.cancel]);
+    return `
+    <div class="review-row" style="align-items:flex-start;gap:12px;">
+      <span>
+        <b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)} · ${escapeHtml(row.astrologer?.name || '—')}</b><br>
+        <small>${escapeHtml(t.st[row.status] || row.status)}${row.payable != null ? ` · ${escapeHtml(t.balance)}: ${escapeHtml(row.payable)}` : ''}</small><br>
+        <small>${escapeHtml(new Date(row.createdAt).toLocaleString())}</small>
+      </span>
+      <span style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+        ${actions.map(([action, label]) => `<button class="btn ${action === 'approve' || action === 'pay' ? 'btn-gold' : 'btn-ghost'}" onclick="payoutAction('${escapeHtml(row.id)}','${action}')">${escapeHtml(label)}</button>`).join('')}
+      </span>
+    </div>`;
+  }).join('');
+}
+
+async function payoutAction(id, action){
+  const t = T[LANG].po;
+  const token = await accToken();
+  if(!token) return;
+  let extra = {};
+  if(action === 'pay'){
+    const reference = window.prompt(t.reference);
+    if(!reference || !reference.trim()) return;
+    extra = { externalReference: reference.trim() };
+  }
+  if(action === 'fail' || action === 'cancel'){
+    const note = window.prompt(t.note);
+    if(!note || !note.trim()) return;
+    extra = { note: note.trim() };
+  }
+  const response = await fetch(`/api/payouts/${encodeURIComponent(id)}/${action}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify(extra)
+  });
+  const result = await response.json().catch(()=>({}));
+  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
+  renderMyAccount();
+}
+
+/* ============================================================
+   REFUND QUEUE (finance, admin, super_admin)
+   Open refunds oldest first, with a small form to record a new one against a
+   payment id. Completing asks for the eSewa reference of the transfer that
+   already happened; the server writes the reversals with it.
+============================================================ */
+
+async function renderRefundsQueue(body){
+  const t = T[LANG].rf;
+  const token = await accToken();
+  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
+
+  let queue = { refunds: [] };
+  try{
+    const response = await fetch('/api/refunds/queue', { headers:{ Authorization:`Bearer ${token}` } });
+    queue = await response.json();
+    if(!response.ok) throw new Error(queue.error?.message || t.none);
+  } catch(err){
+    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
+    return;
+  }
+
+  const rows = (queue.refunds ?? []).map(row => {
+    const actions = [];
+    if(row.status === 'requested') actions.push(['approve', t.approve], ['reject', t.reject]);
+    if(row.status === 'approved') actions.push(['process', t.process], ['reject', t.reject]);
+    if(row.status === 'processing') actions.push(['complete', t.complete]);
+    return `
+    <div class="review-row" style="align-items:flex-start;gap:12px;">
+      <span>
+        <b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)} · ${escapeHtml(row.customer?.name || '—')}</b><br>
+        <small>${escapeHtml(row.status)} · ${escapeHtml(row.reason || '')}</small><br>
+        <small>${row.booking ? escapeHtml(new Date(row.booking.startsAt).toLocaleString()) : ''}</small>
+      </span>
+      <span style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
+        ${actions.map(([action, label]) => `<button class="btn ${action === 'approve' || action === 'complete' ? 'btn-gold' : 'btn-ghost'}" onclick="refundAction('${escapeHtml(row.id)}','${action}')">${escapeHtml(label)}</button>`).join('')}
+      </span>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="padding:14px;border:1px solid var(--gold);border-radius:10px;margin-bottom:14px;">
+      <h4 style="margin:0 0 8px;">${escapeHtml(t.requestTitle)}</h4>
+      <div class="field"><label>${escapeHtml(t.payment)}</label><input id="rfPayment" placeholder="payment uuid"></div>
+      <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.amount)}</label><input id="rfAmount" type="number" min="1" step="0.01"></div>
+      <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.reason)}</label><input id="rfReason" maxlength="1000"></div>
+      <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="submitRefundRequest()">${escapeHtml(t.request)}</button>
+      <div id="rfMsg"></div>
+    </div>
+    ${rows || `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`}`;
+}
+
+async function submitRefundRequest(){
+  const t = T[LANG].rf;
+  const token = await accToken();
+  const msg = document.getElementById('rfMsg');
+  if(!token) return;
+  const response = await fetch('/api/refunds', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify({
+      paymentId: document.getElementById('rfPayment')?.value.trim(),
+      amount: Number(document.getElementById('rfAmount')?.value),
+      reason: document.getElementById('rfReason')?.value.trim()
+    })
+  });
+  const result = await response.json().catch(()=>({}));
+  if(!response.ok && msg){
+    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(result.error?.message || t.done)}</div>`;
+    return;
+  }
+  if(typeof showToast === 'function') showToast(t.done);
+  renderMyAccount();
+}
+
+async function refundAction(id, action){
+  const t = T[LANG].rf;
+  const token = await accToken();
+  if(!token) return;
+  let extra = {};
+  if(action === 'reject'){
+    const note = window.prompt(t.reason);
+    if(!note || !note.trim()) return;
+    extra = { note: note.trim() };
+  }
+  if(action === 'complete'){
+    const reference = window.prompt(t.reference);
+    if(!reference || !reference.trim()) return;
+    extra = { externalReference: reference.trim() };
+  }
+  const response = await fetch(`/api/refunds/${encodeURIComponent(id)}/${action}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify(extra)
   });
   const result = await response.json().catch(()=>({}));
   if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));

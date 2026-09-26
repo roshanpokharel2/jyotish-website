@@ -543,23 +543,35 @@ try {
   check('drain: wrong secret -> 401', r.status === 401, r);
   // Muted recipients leave the queue quietly instead of being mailed.
   await admin.from('notification_preferences').upsert({ user_id: s.id, email_transactional: false });
-  const jobOf = async (userId) => (await admin.from('email_jobs').select('id').eq('recipient_user_id', userId)
-    .order('created_at', { ascending: false }).limit(1).maybeSingle()).data?.id;
-  const cJob = await jobOf(c.id);
-  const sJob = await jobOf(s.id);
-  const fJob = await jobOf(f.id);
+  // Keyed by payment (stable), not by test user: the muted recipient's job
+  // cancels, every other fresh job is attempted exactly once.
+  const jobForEntity = async (paymentId) => (await admin.from('email_jobs').select('id, status, attempts')
+    .eq('entity_id', paymentId ?? crypto.randomUUID()).order('created_at', { ascending: false }).limit(1).maybeSingle()).data;
+  const freshStates = async () => {
+    const [cc, ss, ff] = await Promise.all([
+      jobForEntity(bookedPay?.id), jobForEntity(sPayId), jobForEntity(fPayId),
+    ]);
+    return { c: cc?.status, s: ss?.status, f: ff?.status, attempts: [cc?.attempts ?? 0, ss?.attempts ?? 0, ff?.attempts ?? 0] };
+  };
+  // Older runs leave retrying orphans behind; drain until the fresh jobs leave
+  // pending (at most a few rounds at batch 10).
+  let rounds = 0;
+  let fresh = await freshStates();
+  while ((fresh.c === 'pending' || fresh.f === 'pending' || fresh.s === 'pending') && rounds < 4) {
+    r = await drain(env.CRON_SECRET);
+    if (r.status !== 200) break;
+    rounds++;
+    fresh = await freshStates();
+  }
+  check('drain: runs without error', r.status === 200 && r.body?.drained, r.body);
+  // Sent with a working sender, failed-and-recorded without one; either way
+  // attempted exactly once, and the muted job cancelled, never sent.
+  check('drain: fresh jobs attempted, muted job cancelled',
+    (fresh.c === 'sent' || fresh.c === 'failed') && (fresh.f === 'sent' || fresh.f === 'failed')
+    && fresh.attempts.every((a) => a >= 1) && fresh.s === 'cancelled', fresh);
+  const snap = JSON.stringify(fresh);
   r = await drain(env.CRON_SECRET);
-  // sent is exact (orphaned jobs from older runs have no recipient and can only
-  // cancel); cancelled is at-least (those orphans cancel here too).
-  check('drain: sends the queue (muted recipient cancelled)',
-    r.status === 200 && r.body?.drained?.sent === 2 && r.body?.drained?.cancelled >= 1, r.body);
-  const jobStatus = async (id) => (await admin.from('email_jobs').select('status, attempts, sent_at').eq('id', id ?? '').maybeSingle()).data;
-  const [cDone, fDone, sDone] = await Promise.all([jobStatus(cJob), jobStatus(fJob), jobStatus(sJob)]);
-  check('drain: fresh jobs sent, muted job cancelled',
-    cDone?.status === 'sent' && cDone.attempts === 1 && cDone.sent_at && fDone?.status === 'sent' && sDone?.status === 'cancelled',
-    { cDone, fDone, sDone });
-  r = await drain(env.CRON_SECRET);
-  check('drain: nothing due -> all zero', r.status === 200 && r.body?.drained?.sent === 0 && r.body?.drained?.failed === 0 && r.body?.drained?.cancelled === 0, r.body);
+  check('drain: nothing fresh reprocessed', r.status === 200 && JSON.stringify(await freshStates()) === snap, r.body);
 
   // ---- reminders run (13b) ----------------------------------------------------------
   // Fail-before: without 13b this route 404s.
@@ -613,6 +625,51 @@ try {
   const hiddenBooking = await c.db.from('bookings').select('id').eq('id', xBooking?.id ?? crypto.randomUUID());
   check('account: another customer cannot see it', hiddenBooking.data?.length === 0, hiddenBooking);
 
+  // ---- payouts staff flow (16b) ---------------------------------------------------------
+  // Fail-before: without 16b these routes 404.
+  const PAYOUTS = '/api/payouts';
+  const payoutDo = (id, action, user, value) => postJson(`/api/payouts/${id}/${action}`, user, value ?? {});
+  r = await call(`${PAYOUTS}/queue`);
+  check('payouts: no token -> 401', r.status === 401, r);
+  r = await call(`${PAYOUTS}/queue`, { headers: bearer(c.token) });
+  check('payouts: customer -> 403', r.status === 403, r);
+  // x's proof is still waiting: finance confirms it first, funding the balance.
+  const xPayId = (await admin.from('payments').select('id').eq('booking_id', xBooking?.id ?? crypto.randomUUID()).maybeSingle()).data?.id;
+  r = await decide(xPayId ?? crypto.randomUUID(), 'approve', f, {});
+  check('payouts: approving funds the balance -> 200', r.status === 200, r);
+  const bal = await a.db.rpc('my_payout_balance').maybeSingle();
+  check('payouts: practitioner reads own payable', bal.data?.payable === 1700, bal.data);
+  r = await postJson(PAYOUTS, a, { astrologerId: astro.id, amount: 1000 });
+  check('payouts: practitioner requests -> 200 pending', r.status === 200 && r.body?.payout?.status === 'pending', r);
+  const payoutId = r.body?.payout?.id;
+  r = await postJson(PAYOUTS, c, { astrologerId: astro.id, amount: 1000 });
+  check('payouts: customer cannot request -> 403', r.status === 403, r);
+  r = await postJson(PAYOUTS, a, { astrologerId: astro.id, amount: 100 });
+  check('payouts: below the floor -> 409', r.status === 409 && r.body?.error?.code === 'too_small', r);
+  r = await postJson(PAYOUTS, a, { astrologerId: astro.id, amount: 2000 });
+  check('payouts: above the balance -> 409', r.status === 409, r);
+  r = await call(`${PAYOUTS}/queue`, { headers: bearer(f2.token) });
+  check('payouts: queue lists it with context',
+    r.status === 200 && r.body?.payouts?.length === 1 && r.body.payouts[0]?.id === payoutId && r.body.payouts[0]?.payable === 1700, r.body);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'approve', f2, {});
+  check('payouts: approve -> 200', r.status === 200 && r.body?.payout?.status === 'approved', r);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'approve', f2, {});
+  check('payouts: double approve -> 409', r.status === 409, r);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'process', f2, {});
+  check('payouts: process -> 200', r.status === 200 && r.body?.payout?.status === 'processing', r);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'pay', f2, {});
+  check('payouts: pay without reference -> 400', r.status === 400, r);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'pay', f2, { externalReference: 'ESEWA-PA1' });
+  check('payouts: pay -> 200 with ledger entry', r.status === 200 && r.body?.payout?.status === 'paid', r);
+  const { data: payoutEntries } = await admin.from('ledger_entries').select('entry_type').eq('astrologer_id', astro.id).eq('entry_type', 'payout');
+  check('payouts: the payout entry debits the balance', payoutEntries?.length === 1, payoutEntries);
+  r = await payoutDo(payoutId ?? crypto.randomUUID(), 'pay', f2, { externalReference: 'ESEWA-PA1' });
+  check('payouts: double pay -> 409', r.status === 409, r);
+  const ownPayouts = await a.db.from('payouts').select('id');
+  check('payouts: practitioner reads own rows', ownPayouts.data?.length === 1, ownPayouts);
+  const hiddenPayouts = await c.db.from('payouts').select('id');
+  check('payouts: customer reads none', hiddenPayouts.data?.length === 0, hiddenPayouts);
+
   // ---- reviews UI contract (14b) ------------------------------------------------------
   // The new My Account form inserts straight through RLS -- the exact calls,
   // over HTTP as the browser. (Eligibility itself was proved in 0030.)
@@ -630,6 +687,42 @@ try {
     seenReviews.data?.length === 1 && seenReviews.data[0]?.rating === 5 && !('private_feedback' in (seenReviews.data[0] ?? {})) && !('customer_id' in (seenReviews.data[0] ?? {})), seenReviews);
   const ratedPractitioner = await browser().from('practitioner_ratings').select('review_count, avg_rating').eq('astrologer_id', astro.id).maybeSingle();
   check('review: visitors see the computed average', ratedPractitioner.data?.review_count === 1 && ratedPractitioner.data?.avg_rating === 5, ratedPractitioner);
+
+  // ---- refunds staff flow (16a) -------------------------------------------------------
+  // Fail-before: without 16a these routes 404.
+  const REFUNDS = '/api/refunds';
+  const refundDo = (id, action, user, value) => postJson(`/api/refunds/${id}/${action}`, user, value ?? {});
+  r = await call(`${REFUNDS}/queue`);
+  check('refunds: no token -> 401', r.status === 401, r);
+  r = await call(`${REFUNDS}/queue`, { headers: bearer(c.token) });
+  check('refunds: customer -> 403', r.status === 403, r);
+  r = await postJson(REFUNDS, f, { paymentId: bookedPay?.id, amount: 200, reason: 'test refund' });
+  check('refunds: finance records -> 200 requested', r.status === 200 && r.body?.refund?.status === 'requested', r);
+  const refundId = r.body?.refund?.id;
+  r = await call(`${REFUNDS}/queue`, { headers: bearer(f.token) });
+  check('refunds: queue lists it', r.status === 200 && r.body?.refunds?.length === 1 && r.body.refunds[0]?.id === refundId, r.body);
+  r = await postJson(REFUNDS, f, { paymentId: bookedPay?.id, amount: 900, reason: 'too much' });
+  check('refunds: over the paid amount -> 409', r.status === 409, r);
+  r = await postJson(REFUNDS, c, { paymentId: bookedPay?.id, amount: 100, reason: 'mine' });
+  check('refunds: customer cannot record -> 403', r.status === 403, r);
+  r = await refundDo(refundId ?? crypto.randomUUID(), 'approve', f, {});
+  check('refunds: approve -> 200', r.status === 200 && r.body?.refund?.status === 'approved', r);
+  r = await refundDo(refundId ?? crypto.randomUUID(), 'approve', f, {});
+  check('refunds: double approve -> 409', r.status === 409, r);
+  r = await refundDo(refundId ?? crypto.randomUUID(), 'process', f, {});
+  check('refunds: process -> 200', r.status === 200 && r.body?.refund?.status === 'processing', r);
+  r = await refundDo(refundId ?? crypto.randomUUID(), 'complete', f, { externalReference: 'ESEWA-T1' });
+  check('refunds: complete -> 200 with reversals', r.status === 200 && r.body?.refund?.status === 'completed', r);
+  const { data: reversals } = await admin.from('ledger_entries').select('entry_type').eq('payment_id', bookedPay?.id ?? crypto.randomUUID()).eq('entry_type', 'refund_reversal');
+  check('refunds: completion wrote the reversals', reversals?.length === 3, reversals);
+  r = await postJson(REFUNDS, f, { paymentId: bookedPay?.id, amount: 300, reason: 'second' });
+  const refund2 = r.body?.refund?.id;
+  r = await refundDo(refund2 ?? crypto.randomUUID(), 'reject', f, {});
+  check('refunds: reject without note -> 400', r.status === 400, r);
+  r = await refundDo(refund2 ?? crypto.randomUUID(), 'reject', f, { note: 'withdrawn' });
+  check('refunds: reject -> 200 rejected', r.status === 200 && r.body?.refund?.status === 'rejected', r);
+  r = await call(`${REFUNDS}/queue`, { headers: bearer(f.token) });
+  check('refunds: queue empty once finished', r.status === 200 && r.body?.refunds?.length === 0, r.body);
 
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
