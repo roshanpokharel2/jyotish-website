@@ -55,7 +55,8 @@ production one. Budget about 15 minutes.
 
 ### 1.1 Prerequisites
 
-- Node.js **20.9 or newer** (`node -v`) — required by Next.js
+- Node.js **22 LTS or newer** (`node -v`). 20.9+ still runs the app, but Node 20 is past
+  end of life (April 2026)
 - A Supabase account (https://supabase.com, the free plan is enough)
 
 ### 1.2 Create the Supabase project
@@ -142,6 +143,7 @@ Nobody can approve their own practitioner application, so use a **second** accou
 | `npm run db:migrate` | Applies only the migrations this database does not have yet — run it after pulling |
 | `npm run db:test` | Runs every database test |
 | `npm run db:status` | Lists which migrations this database has |
+| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Creates and deletes throwaway users |
 | `npm run db:reset` | **Development only. Deletes all app data** and rebuilds from scratch. Logins survive but come back as plain customers — redo step 1.5 part 2 |
 
 To add a migration, read `database/migrations/README.md` first: new files are numbered,

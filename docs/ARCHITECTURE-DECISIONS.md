@@ -198,3 +198,19 @@ covered too. It is not Supabase CLI's `supabase_migrations` schema — there is 
 migration system, `database/migrations` + `scripts/db.mjs`. History starts at 0012;
 0001–0011 are never back-filled, because a row claiming an application nobody observed
 is worse than no row.
+
+---
+
+## AD-16 — Server trust model (Checkpoint H)
+
+- **Identity** comes from the Supabase access token in `Authorization: Bearer`, checked
+  by Supabase Auth on every request. No cookies, so no CSRF surface.
+- **Authority** (role, account status) is read from the database per request, never
+  from token claims or the request body, so a role change or a block applies at once.
+- **The secret key lives only in `lib/server/`** (`server-only`), is read from the
+  environment, and is never logged or returned. The service role bypasses RLS, so every
+  route authorizes with `requireUser()` *before* touching the admin client.
+- **RLS stays the floor.** Server routes are for what the browser must not be trusted
+  to do (validation, cross-row checks, service-role writes); they do not replace policies.
+- **Errors**: caller-facing ones are explicit `HttpError`s; anything unexpected is a
+  generic 500 with the detail only in the server log.

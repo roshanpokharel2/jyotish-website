@@ -6,19 +6,13 @@
 //
 // Reads SUPABASE_DB_URL and SUPABASE_DB_TARGET from .env (Dashboard > Project
 // Settings > Database > Connection string > URI). Refuses to run unless the target
-// is declared "development" (see the guard below). Each file runs as one simple query, so a file that
+// is declared "development" (scripts/env.mjs). Each file runs as one simple query, so a file that
 // wraps itself in begin/commit or begin/rollback behaves exactly as written.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import pg from 'pg';
-
-const env = Object.fromEntries(
-  readFileSync(new URL('../.env', import.meta.url), 'utf8')
-    .split(/\r?\n/)
-    .filter((l) => l && !l.startsWith('#') && l.includes('='))
-    .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()])
-);
+import { assertTarget, env } from './env.mjs';
 
 const connectionString = env.SUPABASE_DB_URL;
 if (!connectionString) {
@@ -26,27 +20,8 @@ if (!connectionString) {
   process.exit(2);
 }
 
-// Production guard. Every file this script runs writes (tests too, before rolling
-// back), so the target must be declared. Development is the default; production
-// needs SUPABASE_DB_TARGET=production AND --production on the command line.
 const args = process.argv.slice(2);
-const wantsProduction = args.includes('--production');
-const target = env.SUPABASE_DB_TARGET;
-if (target !== (wantsProduction ? 'production' : 'development')) {
-  console.error(wantsProduction
-    ? 'REFUSED: --production given but SUPABASE_DB_TARGET is not "production".'
-    : `REFUSED: SUPABASE_DB_TARGET is "${target ?? ''}", expected "development". ` +
-      'Set it in .env only for a development project; production needs --production.');
-  process.exit(3);
-}
-// The declaration covers SUPABASE_URL's project, so the DB URL must be that same project.
-const urlRef = /^https:\/\/([a-z0-9]+)\.supabase\.co/.exec(env.SUPABASE_URL ?? '')?.[1];
-const dbRef = /postgres\.([a-z0-9]+)[:@]|db\.([a-z0-9]+)\.supabase\.co/.exec(connectionString);
-if (!urlRef || !dbRef || (dbRef[1] ?? dbRef[2]) !== urlRef) {
-  console.error('REFUSED: SUPABASE_DB_URL does not point at the project in SUPABASE_URL.');
-  process.exit(3);
-}
-console.log(`target: ${target} (project ${urlRef})`);
+assertTarget(args.includes('--production')); // production guard, see scripts/env.mjs
 
 const wantsStatus = args.includes('--status');
 // A directory stands for its .sql files in name order (works in any shell). Migrations

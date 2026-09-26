@@ -65,7 +65,7 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–G
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–H
 done, see below). The project in `.env` is the **development** database; 0001–0012 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
@@ -420,6 +420,45 @@ Supabase's optional `ensure_rls` event trigger (auto-enables RLS on new tables) 
 function alone; dropping it cascades to the event trigger.
 
 **Rollback** Fix forward. Dropping the table only removes the protection.
+
+#### Checkpoint H — Next.js server foundation ✅ (running against development)
+
+**What**
+- `lib/server/supabase.js` — the only holder of the secret key: one admin client, config
+  validated on first use (URL shape, both URLs equal, secret is not the publishable key).
+  Errors name variables, never values. `import 'server-only'` makes any client import a
+  build error. Realtime is stubbed out (the server never subscribes; also keeps
+  supabase-js working on Node < 22).
+- `lib/server/auth.js` — `requireUser(request, { roles })`: `Authorization: Bearer
+  <access token>` verified by Supabase Auth (`auth.getUser`), then role and customer
+  status read fresh from the database. **Non-active customers are refused here** (403
+  `account_inactive`) — the enforcement Checkpoint C left open.
+- `lib/server/http.js` — `route()` wrapper: JSON responses, `Cache-Control: no-store`,
+  `HttpError` for caller-facing errors, everything else logged and returned as a bare 500.
+- `GET /api/me` — the first endpoint: `{ id, email, role, customerId }`.
+- `scripts/env.mjs` — `.env` loading + development guard shared by `db.mjs` and the new
+  `scripts/test-server.mjs` (`npm run test:server`); the guard now also refuses when
+  `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` differ.
+- Dependency: `@supabase/supabase-js` (server only; the browser keeps its CDN copy).
+
+**Why** Checkpoints I–K need a trusted layer that writes with the service role only
+after authorizing the caller from server-side facts.
+
+**Test** Before: `GET /api/me` → 404. After, `npm run test:server` against a production
+build (14 checks): no token / garbage / missing `Bearer` / payload-forged token /
+publishable key as token → 401; signed-in customer → 200 with the db role and only the
+four fields; blocked customer → 403; a role change applies on the next request; signed-out
+session and deleted user → 401; wrong method → 405; responses `no-store`; throwaway users
+removed. Also: a client component importing `lib/server` fails `next build`; the secret
+key appears nowhere in `.next` or the repo (outside `.env`); a server started with the
+publishable key in place of the secret returns a generic 500 and logs only the variable
+name.
+
+**Not done here** No write endpoints yet (Checkpoint I adds request-body limits and
+validation with the first one). No rate limiting. `auth.getUser` costs one Auth round
+trip per request; local JWT verification is an option if that ever matters.
+
+**Rollback** Delete `app/api` and `lib/server`; nothing in the database depends on them.
 
 ---
 
