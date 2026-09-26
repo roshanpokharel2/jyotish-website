@@ -12,10 +12,12 @@
     "db:test": "node scripts/db.mjs database/tests",
     "db:status": "node scripts/db.mjs --status",
     "test:server": "node --experimental-websocket scripts/test-server.mjs",
-    "db:reset":"node scripts/db.mjs database/dev/reset.sql database/schema.sql database/migrations database/dev/relink_users.sql"
+    "db:reset": "node scripts/db.mjs database/dev/reset.sql database/schema.sql database/migrations database/dev/relink_users.sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
+    "livekit-client": "^2.22.3",
+    "livekit-server-sdk": "^2.19.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

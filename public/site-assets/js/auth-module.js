@@ -285,9 +285,11 @@ async function renderAccountRequests(body){
     html += bookings.data.map(row => {
       const pay = row.payments?.[0]?.status;
       const when = new Date(row.scheduled_at).toLocaleString();
+      const join = row.status === 'confirmed'
+        ? `<br><a class="btn btn-gold" style="margin-top:6px;padding:4px 12px;font-size:.8rem;" href="/site-assets/consult.html?booking=${escapeHtml(row.id)}">${escapeHtml(t.cm.join)}</a>` : '';
       return `
       <div class="review-row">
-        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small><br><small>${escapeHtml(t.pay.st[pay] || pay || '—')}</small>${renderBookingReview(t, row)}</span>
+        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small><br><small>${escapeHtml(t.pay.st[pay] || pay || '—')}</small>${renderBookingReview(t, row)}${join}</span>
       </div>`;
     }).join('');
   }

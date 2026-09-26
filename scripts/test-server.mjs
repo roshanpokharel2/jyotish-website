@@ -762,6 +762,60 @@ try {
   const auditStaff = await f.db.from('audit_log').select('id', { count: 'exact', head: true });
   check('audit: finance reads the trail', (auditStaff.count ?? 0) > 0, auditStaff);
 
+  // ---- consultations join (17b) ---------------------------------------------------------
+  // Fail-before: without 17b this route 404s.
+  const JOIN = '/api/consultations/join';
+  const joinAs = (user, bookingId) => postJson(JOIN, user, { bookingId });
+  const decode = (token) => JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url'));
+  r = await call(JOIN, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  check('join: no token -> 401', r.status === 401, r);
+  r = await joinAs(c, 'not-a-uuid');
+  check('join: bad id -> 400', r.status === 400, r);
+  r = await joinAs(c, booked?.id ?? crypto.randomUUID());
+  check('join: outside the window -> 409', r.status === 409 && r.body?.error?.code === 'not_joinable', r);
+  r = await joinAs(s, booked?.id ?? crypto.randomUUID());
+  check('join: stranger -> 404', r.status === 404, r);
+  const joinSlot = (await freeSlots())[0]?.starts_at;
+  r = await book(s, { astrologerId: astro.id, serviceId: callService, startsAt: joinSlot });
+  const unpaidBooking = r.body?.booking;
+  r = await joinAs(s, unpaidBooking?.id ?? crypto.randomUUID());
+  check('join: unpaid booking -> 409', r.status === 409 && r.body?.error?.code === 'not_joinable', r);
+  await admin.from('bookings').update({
+    scheduled_at: new Date(Date.now() - 10 * 60e3).toISOString(),
+    ends_at: new Date(Date.now() + 20 * 60e3).toISOString(),
+  }).eq('id', booked?.id ?? crypto.randomUUID());
+  r = await joinAs(c, booked?.id ?? crypto.randomUUID());
+  const grant = r.body?.token ? decode(r.body.token).video : null;
+  check('join: customer in window -> 200 with audio+video grants',
+    r.status === 200 && r.body?.room === `consultation_${booked?.id}` && r.body?.mode === 'audio_video'
+    && grant?.roomJoin && grant?.canSubscribe && grant?.canPublish
+    && [...(grant?.canPublishSources ?? [])].sort().join() === 'camera,microphone'
+    && decode(r.body.token).sub === c.id && decode(r.body.token).exp - decode(r.body.token).nbf === 7200, { room: r.body?.room, grant });
+  r = await joinAs(a, booked?.id ?? crypto.randomUUID());
+  check('join: practitioner in window -> 200 for themselves',
+    r.status === 200 && decode(r.body?.token ?? '').sub === a.id, r.status);
+  await admin.from('bookings').update({ consultation_mode: 'audio' }).eq('id', booked?.id ?? crypto.randomUUID());
+  r = await joinAs(c, booked?.id ?? crypto.randomUUID());
+  check('join: audio mode mints microphone-only grants',
+    r.status === 200 && (decode(r.body?.token ?? '').video?.canPublishSources ?? []).join() === 'microphone', r.status);
+  await admin.from('bookings').update({ consultation_mode: 'audio_video' }).eq('id', booked?.id ?? crypto.randomUUID());
+  await admin.from('bookings').update({
+    scheduled_at: new Date(Date.now() - 2 * 3600e3).toISOString(),
+    ends_at: new Date(Date.now() - 90 * 60e3).toISOString(),
+  }).eq('id', booked?.id ?? crypto.randomUUID());
+  r = await joinAs(c, booked?.id ?? crypto.randomUUID());
+  check('join: after it ended -> 409', r.status === 409, r);
+
+  // ---- consultation room page (17c) -------------------------------------------------------
+  // Fail-before: without 17c the page 404s. The room itself is exercised by hand
+  // (camera and microphone need a real browser); here the page, its script, and
+  // the join-button contract it relies on.
+  r = await call('/site-assets/consult.html');
+  check('room: page served', r.status === 200, r.status);
+  const roomJs = await (await fetch(`${base}/site-assets/js/consult-room.js`)).text();
+  check('room: script joins through the endpoint, never mints',
+    roomJs.includes('/api/consultations/join') && roomJs.includes('LivekitClient.Room') && !roomJs.includes('AccessToken'), roomJs.length);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);
