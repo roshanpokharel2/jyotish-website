@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–C
-done, see below). The project in `.env` is the **development** database; 0001–0008 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–D
+done, see below). The project in `.env` is the **development** database; 0001–0009 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -299,6 +299,22 @@ There is also no staff UI or policy for changing a customer's status; it is SQL-
 only until the admin dashboard.
 
 **Rollback** Fix forward.
+
+#### Checkpoint D — `0009_audit_log_actor_delete.sql` ✅ (applied to development)
+
+**What** Dropped the foreign key `audit_log.actor_user_id → users`. The column stays a
+plain uuid; the append-only trigger is unchanged.
+
+**Why** Reproduced in dev: deleting any user who had ever acted failed with
+`42501 audit_log is append-only`, because `on delete set null` tried to UPDATE their
+audit rows. Account deletion was impossible for every staff member. Dropping the FK
+also means the log keeps the deleted actor's id (with `actor_role`) instead of nulling it.
+
+**Test** `database/tests/0009_audit_log_actor_delete_test.sql`: fails before 0009,
+passes after (actor deleted, audit entry unchanged, log still append-only);
+0002–0008 still pass; re-runnable.
+
+**Rollback** Fix forward. Re-adding the FK would bring the delete failure back.
 
 ---
 
