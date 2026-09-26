@@ -98,11 +98,11 @@ begin
     raise exception 'FAIL: approval did not promote the user to the jyotish role';
   end if;
 
-  -- 6. The customer can now see them.
+  -- 6. The customer can now see them -- in the directory, not the row (0017).
   set local role authenticated;
   perform set_config('request.jwt.claims',
                      json_build_object('sub', customer_id, 'role', 'authenticated')::text, true);
-  select count(*) into seen from public.astrologers where user_id = applicant_id;
+  select count(*) into seen from public.active_practitioners() where id = jyotish_row.id;
   if seen <> 1 then
     raise exception 'FAIL: an approved practitioner is not visible to customers';
   end if;

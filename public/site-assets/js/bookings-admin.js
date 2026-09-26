@@ -1,6 +1,7 @@
 /* ============================================================
    BOOKED SERVICES / ADMIN RECORDS
-   Submitted service requests from the database, grouped by person, with export.
+   Submitted service requests and consultation bookings from the database, grouped by
+   person, with export.
    RLS decides what is listed: staff see every request, anyone else only their own
    (0002). Nothing is read from this browser's storage (Checkpoint K).
 ============================================================ */
@@ -21,20 +22,37 @@ const BOOKING_RECORD_TYPES = {
 async function getBookingAdminRecords(){
   const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
   if(!client || !mainAuthUser) return null;
-  const { data, error } = await client.from('service_requests')
-    .select('id, request_type, status, payload, created_at')
-    .order('created_at', { ascending:false })
-    .limit(500);
-  if(error){ console.warn('Booking records unavailable:', error); return []; }
-  return data.map(row=>{
+  const [requests, bookings] = await Promise.all([
+    client.from('service_requests')
+      .select('id, request_type, status, payload, created_at')
+      .order('created_at', { ascending:false })
+      .limit(500),
+    // Consultation bookings (Step 7). RLS: the customer's own, a practitioner's own, staff all.
+    client.from('bookings')
+      .select('id, status, scheduled_at, ends_at, consultation_mode, price_snapshot, currency, notes, subject, created_at, services(name)')
+      .order('created_at', { ascending:false })
+      .limit(500)
+  ]);
+  if(requests.error) console.warn('Booking records unavailable:', requests.error);
+  if(bookings.error) console.warn('Bookings unavailable:', bookings.error);
+  const records = (requests.data || []).map(row=>{
     const payload = row.payload || {};
     return {
+      created:row.created_at,
       key:`${new Date(row.created_at).toLocaleString()} · ${row.status}`,
       type:BOOKING_RECORD_TYPES[row.request_type] || row.request_type,
       name:String(payload.name || payload.fullName || payload.profile?.name || 'Unnamed visitor'),
       data:payload
     };
-  });
+  }).concat((bookings.data || []).map(row=>({
+    created:row.created_at,
+    key:`${new Date(row.scheduled_at).toLocaleString()} · ${row.status}`,
+    type:row.services?.name || BOOKING_RECORD_TYPES.booking,
+    name:String(row.subject?.name || 'Unnamed visitor'),
+    data:{ reference:row.id.slice(0,8).toUpperCase(), status:row.status, startsAt:row.scheduled_at, endsAt:row.ends_at,
+      mode:row.consultation_mode, price:row.price_snapshot, currency:row.currency, notes:row.notes, subject:row.subject }
+  })));
+  return records.sort((a,b)=>String(b.created).localeCompare(String(a.created)));
 }
 
 function recordText(record){

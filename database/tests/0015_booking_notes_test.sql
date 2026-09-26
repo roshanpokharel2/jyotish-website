@@ -45,8 +45,9 @@ begin
   if exists (select 1 from pg_proc where proname = 'create_booking' and pronargs = 4) then
     raise exception 'FAIL: the old four-argument create_booking still exists';
   end if;
-  if has_function_privilege('anon', 'public.create_booking(uuid, uuid, uuid, timestamptz, text)', 'execute')
-     or has_function_privilege('authenticated', 'public.create_booking(uuid, uuid, uuid, timestamptz, text)', 'execute') then
+  -- By name, not signature: later migrations (0016) replace the function again.
+  if exists (select 1 from pg_proc where proname = 'create_booking'
+             and (has_function_privilege('anon', oid, 'execute') or has_function_privilege('authenticated', oid, 'execute'))) then
     raise exception 'FAIL: create_booking is callable from the browser';
   end if;
 

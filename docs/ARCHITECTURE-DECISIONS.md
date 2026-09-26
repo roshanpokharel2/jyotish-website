@@ -133,7 +133,8 @@ promotion) belong in an AFTER trigger; the BEFORE trigger cannot see the row as 
 
 The current browser booking flow writes generic `service_requests` rows. That stays as
 the intake channel for contact forms, kundali requests and similar, but real bookings go
-through `reservations` → `bookings` → `payments`. The two are not merged.
+through `bookings` (the hold is the booking, AD-18) → `payments`. The two are not merged.
+Since 7d the booking form writes no `service_requests` row.
 
 ---
 
@@ -253,3 +254,14 @@ booking and could fail between the two. A constraint cannot compare with `now()`
 expired hold keeps occupying the slot in the constraint until the next booking of that
 time marks it `expired`; the free-slot list ignores expired holds already. Payment
 (Step 8) must refuse to confirm a booking whose hold has expired.
+
+---
+
+## AD-19 — Other people's rows are read through a function, not a policy (Checkpoint 7e)
+
+RLS decides rows, never columns. When people need *part* of a row they do not own (a
+practitioner's public profile), there is no row policy for them. A `security definer`
+function returns exactly the public columns (`active_practitioners()`, 0017). A
+policy is for rows whose every column the reader may see: their own, or staff. A new
+private column is then private by default, and nothing has to be remembered to keep
+it so.

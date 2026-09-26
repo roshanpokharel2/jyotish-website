@@ -122,15 +122,11 @@ async function start() {
 // ---- sidebar ----------------------------------------------------------------------
 
 async function loadAstrologers() {
-  const { data, error } = await APP.supabase
-    .from('astrologers')
-    .select('id, user_id, name, specialization, languages, consultation_fee')
-    .eq('status', 'active')
-    .order('name');
+  // Public profile columns of active practitioners, the caller left out (0017).
+  const { data, error } = await APP.supabase.rpc('active_practitioners');
   if (error) return appError(error);
 
   const cards = (data || [])
-    .filter((astrologer) => astrologer.user_id !== APP.me.id)
     .map((astrologer) => {
       const card = el('button', 'astrologer-card');
       card.type = 'button';

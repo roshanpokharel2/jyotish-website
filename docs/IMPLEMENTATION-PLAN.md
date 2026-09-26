@@ -66,7 +66,8 @@ per step; a fresh project runs it once and then every migration in order. Self-a
 checks live in `database/tests/`.
 
 **Status:** Steps 1–6 done. Phase 1 security hardening done (Checkpoints A–K, see
-below). Step 7 under way (7a services catalog, 7b availability and bookings, 7c booking endpoint done). The project in `.env` is the **development** database; 0001–0015 are applied
+below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booking
+endpoint, 7d booking form, 7e practitioner directory). Next: Step 8, payments. The project in `.env` is the **development** database; 0001–0017 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -621,7 +622,8 @@ index skips some in Chromium); fixed by collecting the keys first. No page error
   order, enrolment and contact sent signed out now leave no record at all, exactly as
   far as the business is concerned as before (the copy only ever lived in that visitor's
   browser). Replacing these flows is Step 7 (bookings through the server) — or earlier,
-  requiring sign-in for them, if you decide so.
+  requiring sign-in for them, if you decide so. *(7d: booking now requires sign-in and
+  goes through the server; the formsubmit.co code is deleted. The rest is still open.)*
 - Client-generated booking / order ids and client-declared payment state (Step 7–8).
 - Staff "Booked services" lists the latest 500 requests with no paging or status
   handling; it is a read-only stopgap until the admin workflow exists.
@@ -763,7 +765,8 @@ would bring double booking and self-confirmed bookings back.
 **What**
 - `app/api/bookings/route.js`: `POST { astrologerId, serviceId, startsAt, notes? }`
   behind `requireUser()` (blocked customers refused). Validates shape only — uuids, an
-  instant with an explicit time zone, notes as text ≤ 2000 characters, 4 KB body — then
+  instant with an explicit time zone, notes as text ≤ 2000 characters, 4 KB body (16 KB
+  since 7d) — then
   calls `create_booking()` with the **caller's own customer id** from the database.
   Anything else in the body (price, status, owner, end time, currency) is ignored.
 - Database refusals map to: `self` 400, `not_found` 404 (unknown / draft / untimed /
@@ -796,11 +799,116 @@ wants.
   bookings, the practitioner sees theirs, a customer cannot confirm their own; GET 405.
   No `[api]` errors in the server log; the secret key is not in `.next/static`.
 
-**Not done here** The booking form still uses its old flow (7d). No cancel endpoint:
+**Not done here** The booking form still used its old flow (done in 7d). No cancel endpoint:
 an unpaid hold simply expires. No rate limiting (with the payment endpoints).
 
 **Rollback** Delete `app/api/bookings`; 0015 is fix-forward (the notes parameter is
 optional, so 0014-style calls keep working).
+
+#### Checkpoint 7d — the booking form uses the server — `booking-flow.js` + `0016_booking_subject.sql` ✅ (running against development)
+
+**What**
+- `public/site-assets/js/booking-flow.js` rewritten. Online: type → method →
+  practitioner → time → terms → details → `POST /api/bookings`. **Sign-in required**
+  before the method step (a login button otherwise).
+  - Practitioners are the active rows of `astrologers`; the service is the active one
+    for the chosen method (`live-call` / `live-chart` / `live-qa`), the practitioner's
+    own row winning over the platform-wide one; price and length shown from it.
+  - Times: one `available_slots()` call for the next 14 days, grouped by day, shown in
+    Nepal time.
+  - Details pre-filled from the customer's profile; sent as `subject`, the message as
+    `notes`.
+  - Confirmation shows the server's reference (first 8 characters of the id), time,
+    price and hold expiry. No auto-reset. A time taken meanwhile returns to a fresh
+    time list; two open holds and other refusals get a message.
+  - **Removed:** the "I've paid" attestation and payment-reference field, the
+    browser-made `KP-ON-…` id, the `service_requests` copy, the formsubmit.co email
+    and the hard-coded practitioner.
+  - In-person: no bookable service exists (draft, no price), so it is a contact step
+    (phone / WhatsApp) instead of a fake booking.
+- `0016_booking_subject.sql`: `bookings.subject` (jsonb object, ≤ 4 KB) — the birth
+  details of the person the consultation is about, which the practitioner used to get by
+  email. Practitioners cannot read customer profiles, and the person may not be the
+  account holder. Stored in the same insert by `create_booking(…, p_notes, p_subject)`
+  (supersedes 0015's). Readable through the booking's existing policies only.
+- The route validates `subject` field by field (name, AD birth date — real, not in the
+  future — birth time HH:MM, birth place, country; optional phone, email, BS date) and
+  drops anything else. Body limit 16 KB (2000 characters of Devanagari notes are ~6 KB).
+- "Booked Services" (`bookings-admin.js`) lists bookings alongside the older requests;
+  RLS scopes them (own, practitioner's own, staff all).
+- `site-helpers.js` / `site-config.js`: the formsubmit.co helpers and endpoint are
+  deleted (the kundali one had no caller already).
+
+**Why** The form was the last piece of the old flow: it made its own booking ids, took
+the customer's word that they had paid, and emailed birth details to a third party.
+
+**Test**
+- `database/tests/0016_booking_subject_test.sql`: fails before 0016 (no subject
+  parameter), passes after; 0002–0015 still pass (0015's privilege check made
+  signature-independent). Subject stored; non-object and oversized refused; the
+  practitioner reads it, another practitioner and another customer do not; one
+  server-only entry point.
+- `npm run test:server`: 6 new checks, 94 total. Future, impossible date, bad time, no
+  birth place, non-object subject → 400; subject stored trimmed with unknown fields
+  (`role: 'admin'`) dropped; the practitioner reads the birth details.
+- Headless Edge walk of the real page (throwaway practitioner with hours, and a
+  customer), formsubmit.co blocked and recorded. **Before** (the committed form): 5 of
+  11 fail — no sign-in gate, no database practitioner, no booking row. **After**: 11/11 —
+  signed out asks to log in; the database practitioner, price (NPR 1,000) and length
+  (30 min) are shown; the booking row is the customer's, `payment_pending`, at the
+  chosen time, with birth details and message; confirmation shows the reference and
+  hold; Booked Services lists it; nothing sent to formsubmit.co; nothing in
+  `localStorage` but the sign-in session; no page errors.
+
+**Not done here**
+- **No payment yet (Step 8).** A booking is held for 10 minutes and then lapses; the
+  confirmation says it is confirmed once payment is received and shows no payment
+  instructions. **Do not deploy 7d to production before Step 8.**
+- The practitioner has no view of their upcoming bookings besides Booked Services.
+- Signed-out chat, order, enrolment and contact submissions still reach nobody (Checkpoint K
+  follow-up).
+
+**Rollback** Revert the browser files; 0016 is fix-forward (`p_subject` is optional).
+
+#### Checkpoint 7e — practitioner directory — `0017_practitioner_directory.sql` ✅ (applied to development)
+
+**What**
+- Dropped the policy "authenticated users can read active astrologers". RLS grants
+  whole rows, so it let any signed-in user read every column of every active
+  practitioner, including `verification_documents`, `rejection_reason`, `reviewed_by`
+  and `user_id`.
+- `active_practitioners()` (security definer, signed-in users only, as before) returns
+  the public profile of active practitioners: id, name, photo, biography,
+  qualification, experience, specialization, languages, fee. The caller's own row is
+  left out. A practitioner still reads their own full row; staff read all (AD-19).
+- The booking form and `/chat` read the directory instead of the table (`/chat` no
+  longer needs `user_id` to hide the caller).
+
+**Why** Found while building 7d: the form asked for three columns, but the database
+would have returned the rest, identity documents included, to any customer.
+
+**Test**
+- Before 0017, a rolled-back probe showed that a signed-in stranger reads
+  `["citizenship.pdf"] / internal reviewer note`. After, it reads nothing.
+- `database/tests/0017_practitioner_directory_test.sql`: fails before 0017, passes after.
+  Covers:
+  - the directory has no private columns;
+  - a customer reads no practitioner row, finds the active practitioner in the
+    directory, does not see applicants, and keeps their booking;
+  - the practitioner keeps their row, bookings and hours, and is not listed to
+    themselves;
+  - staff still read every row;
+  - visitors cannot call the directory.
+- `0005_jyotish_verification_test.sql`: "an approved practitioner is visible to
+  customers" is now checked through the directory.
+- 0002–0017 pass.
+- `npm run test:server`: 4 new checks, 98 total. Over REST, a customer reads no row,
+  the directory has public columns only, visitors are refused, and a practitioner is
+  not offered to themselves.
+- Headless Edge, booking walk: 11/11. `/chat` lists the practitioner, with no page
+  errors.
+
+**Rollback** Fix forward. Restoring the policy restores the leak.
 
 ---
 

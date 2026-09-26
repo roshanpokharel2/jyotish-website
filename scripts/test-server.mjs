@@ -113,6 +113,18 @@ try {
     .insert({ user_id: a.id, name: 'Server Test Jyotish', status: 'active' }).select('id').single();
   if (astroError) throw astroError;
 
+  // ---- practitioner directory (0017) ------------------------------------------------
+  const rowRead = await c.db.from('astrologers').select('id, verification_documents, rejection_reason').eq('id', astro.id);
+  check('directory: a customer cannot read the practitioner row', rowRead.data?.length === 0, rowRead);
+  const listed = await c.db.rpc('active_practitioners');
+  const entry = listed.data?.find((p) => p.id === astro.id);
+  check('directory: a customer finds the practitioner, public columns only',
+    entry?.name === 'Server Test Jyotish' && !Object.keys(entry).some((k) => /user_id|status|verification|rejection|review|applied/.test(k)), listed);
+  const visitorList = await browser().rpc('active_practitioners');
+  check('directory: visitors are refused', !!visitorList.error, visitorList);
+  const ownList = await a.db.rpc('active_practitioners');
+  check('directory: a practitioner is not offered to themselves', !ownList.error && !ownList.data.some((p) => p.id === astro.id), ownList);
+
   // ---- /api/me ------------------------------------------------------------------
   let r = await me();
   check('no token -> 401', r.status === 401 && r.body?.error?.code === 'unauthenticated', r);
@@ -297,6 +309,13 @@ try {
   check('book: notes over 2000 characters -> 400', r.status === 400, r);
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: { html: '<b>' } });
   check('book: notes not text -> 400', r.status === 400, r);
+  const person = { name: ' Ram ', dobAd: '1990-01-15', tob: '05:30', pob: 'Pokhara', country: 'Nepal', dobBs: { year: 2046, month: 10, day: 1 } };
+  const future = new Date(Date.now() + 2 * 86400e3).toISOString().slice(0, 10);
+  for (const [what, subject] of [['a birth date in the future', { ...person, dobAd: future }], ['an impossible date', { ...person, dobAd: '1990-02-30' }],
+    ['a bad birth time', { ...person, tob: '25:00' }], ['no birth place', { ...person, pob: '' }], ['not an object', ['Ram']]]) {
+    r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), subject });
+    check(`book: subject with ${what} -> 400`, r.status === 400, r);
+  }
   r = await book(b, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
   check('book: blocked customer -> 403', r.status === 403, r);
   r = await book(a, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
@@ -313,7 +332,7 @@ try {
   // The browser's claims about price, status, owner and length are ignored.
   const sentAt = Date.now();
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: ' Career question ',
-    price: 1, status: 'confirmed', customerId: s.customerId, endsAt: at(5), currency: 'USD' });
+    price: 1, status: 'confirmed', customerId: s.customerId, endsAt: at(5), currency: 'USD', subject: { ...person, role: 'admin' } });
   const booked = r.body?.booking;
   check('book: customer -> 200, payment_pending, price and length from the database',
     r.status === 200 && booked?.status === 'payment_pending' && booked.price === 1000 && booked.currency === 'NPR'
@@ -321,6 +340,9 @@ try {
     && booked.notes === 'Career question', r);
   const holdMinutes = (Date.parse(booked?.holdExpiresAt) - sentAt) / 60e3;
   check('book: slot held for about 10 minutes', holdMinutes > 9 && holdMinutes < 11, booked?.holdExpiresAt);
+  check('book: subject stored trimmed, unknown fields dropped',
+    booked?.subject?.name === 'Ram' && booked.subject.dobAd === '1990-01-15' && booked.subject.tob === '05:30'
+    && booked.subject.dobBs?.year === 2046 && Object.keys(booked.subject).sort().join() === 'country,dobAd,dobBs,name,pob,tob', booked?.subject);
   check('book: response has no commission or internal fields', booked && !Object.keys(booked).some((k) => /commission|customer/i.test(k)), booked);
   const { data: stored } = await admin.from('bookings').select('customer_id, status').eq('id', booked?.id ?? crypto.randomUUID()).single();
   check('book: stored for the signed-in customer, not the one claimed', stored?.customer_id === c.customerId && stored.status === 'payment_pending', stored);
@@ -347,8 +369,8 @@ try {
   check('bookings: customer sees only their own', ownBookings.data?.length === 2 && ownBookings.data.every((x) => x.customer_id === c.customerId), ownBookings);
   const othersBooking = await s.db.from('bookings').select('id').eq('id', booked?.id ?? crypto.randomUUID());
   check("bookings: another customer cannot see it", othersBooking.data?.length === 0, othersBooking);
-  const practitionerView = await a.db.from('bookings').select('id').eq('id', booked?.id ?? crypto.randomUUID());
-  check('bookings: the practitioner sees it', practitionerView.data?.length === 1, practitionerView);
+  const practitionerView = await a.db.from('bookings').select('id, subject').eq('id', booked?.id ?? crypto.randomUUID());
+  check('bookings: the practitioner sees it, with the birth details', practitionerView.data?.length === 1 && practitionerView.data[0].subject?.pob === 'Pokhara', practitionerView);
   const selfConfirm = await c.db.from('bookings').update({ status: 'confirmed' }).eq('id', booked?.id ?? crypto.randomUUID()).select();
   const { data: still } = await admin.from('bookings').select('status').eq('id', booked?.id ?? crypto.randomUUID()).single();
   check('bookings: customer cannot confirm their own booking', (selfConfirm.error || selfConfirm.data?.length === 0) && still?.status === 'payment_pending', { selfConfirm, still });

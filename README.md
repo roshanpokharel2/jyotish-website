@@ -208,7 +208,9 @@ takes the time from the practitioner's weekly `availability` and the price from 
 service. Two bookings of one practitioner can never overlap (a database constraint).
 There is no UI for weekly hours yet; add them in the SQL editor, e.g.
 `insert into public.availability (astrologer_id, day_of_week, start_time, end_time) values ('<astrologer id>', 0, '09:00', '12:00');`
-(`day_of_week` 0 = Sunday).
+(`day_of_week` 0 = Sunday). The site's booking form offers only practitioners with hours:
+without a row here, "Book" shows no free times. A booking stays `payment_pending` and
+lapses after `reservation_minutes` (10) until payments exist (Step 8).
 
 ---
 
