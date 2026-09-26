@@ -24,6 +24,7 @@ Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric o
 | `0005_jyotish_verification.sql` | 6 | Practitioner lifecycle, status guard trigger, staff visibility, private `jyotish-documents` bucket |
 | `0006_users_hardening.sql` | Phase 1 A | No self-update on `users`; only `super_admin` grants admin roles; approval promotion moved to an AFTER trigger so moderators can approve. **Supersedes** the function bodies from 0002/0004/0005 — re-run 0006 after any of them |
 | `0007_astrologer_protected_fields.sql` | Phase 1 B | Fee and review fields not self-editable; no reviewer acts on their own practitioner row; documents frozen after review. **Supersedes** `guard_astrologer_status()` from 0005/0006 |
+| `0008_customer_status_guard.sql` | Phase 1 C | Customers cannot set or change their own `status`; status changes are service-role only and audited |
 
 ## Function privileges — read this before adding a `security definer` function
 

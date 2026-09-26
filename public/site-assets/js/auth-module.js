@@ -71,8 +71,8 @@ async function syncMainCustomer(user, metadata={}){
   const { data, error } = await client.from('customers').upsert({
     user_id:user.id,
     full_name:metadata.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer',
-    phone:metadata.phone || user.user_metadata?.phone || null,
-    status:'active'
+    // No status: the database owns it (0008) and refuses a client that sends one.
+    phone:metadata.phone || user.user_metadata?.phone || null
   }, {onConflict:'user_id'}).select('*').single();
   if(error) { console.warn('Customer profile sync failed:', error); return; }
   mainCustomer = data;

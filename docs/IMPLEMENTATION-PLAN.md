@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–B
-done, see below). The project in `.env` is the **development** database; 0001–0007 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–C
+done, see below). The project in `.env` is the **development** database; 0001–0008 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -272,6 +272,31 @@ passes after; 0002–0006 still pass; 0007 is re-runnable.
 **Client impact** None for the application form or the staff queue. A staff member who
 is also a practitioner can no longer approve or re-price their own row from the UI —
 another reviewer or the SQL editor does it.
+
+**Rollback** Fix forward.
+
+#### Checkpoint C — `0008_customer_status_guard.sql` ✅ (applied to development)
+
+**What**
+- New trigger `trg_customers_guard`: a customer insert with a JWT always lands
+  `active`; an update with a JWT may not change `id`, `user_id`, `status` or
+  `created_at`. Status changes come from the service role and are audited
+  (`customer.status_changed`).
+- `auth-module.js` `syncMainCustomer()` no longer sends `status` in the login upsert.
+
+**Why** Reproduced in dev: the login upsert sent `status:'active'`, so a blocked
+customer was unblocked by signing in again.
+
+**Test** `database/tests/0008_customer_status_guard_test.sql`: fails before 0008,
+passes after; 0002–0007 still pass; re-runnable. Plus a real round trip over the
+Supabase HTTP APIs with the anon key: sign in, first login creates an `active` customer,
+a blocked customer's login sync succeeds and they stay blocked, and a cached old client
+that still sends `status` gets `403 / 42501`.
+
+**Not done here** Blocking does not yet *deny* anything: a blocked customer can still
+sign in and use the site. Enforcing it belongs in the server layer and booking policies.
+There is also no staff UI or policy for changing a customer's status; it is SQL-editor
+only until the admin dashboard.
 
 **Rollback** Fix forward.
 
