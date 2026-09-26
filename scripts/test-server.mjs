@@ -70,6 +70,7 @@ const addCustomer = async (u) => {
   u.customerId = data.id;
 };
 const conversationIds = new Set();
+const proofPrefixes = new Set();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const waitFor = async (condition, ms = 10000) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(200)) if (condition()) return true;
@@ -377,6 +378,156 @@ try {
   r = await call(BOOK, { headers: bearer(c.token) });
   check('book: GET -> 405', r.status === 405, r.status);
 
+  // ---- payment proof (8b) -------------------------------------------------------
+  // Fail-before: on 8a this route does not exist, so the PNG upload below 404s.
+  const PROOF = (paymentId) => `/api/payments/${paymentId}/proof`;
+  const uploadProof = (paymentId, user, ...files) => {
+    const form = new FormData();
+    for (const [bytes, name, type] of files) form.append('file', new Blob([bytes], { type }), name);
+    return call(PROOF(paymentId), { method: 'POST', headers: bearer(user.token), body: form });
+  };
+  const { data: bookedPay } = await admin.from('payments').select('id, status').eq('booking_id', booked?.id ?? crypto.randomUUID()).maybeSingle();
+  check('book: the booking opened an awaiting payment', bookedPay?.status === 'awaiting_payment', bookedPay);
+  r = await call(PROOF(bookedPay?.id ?? crypto.randomUUID()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  check('proof: no token -> 401', r.status === 401 && r.body?.error?.code === 'unauthenticated', r);
+  r = await uploadProof('not-a-uuid', c, [PNG, 'shot.png', 'image/png']);
+  check('proof: bad id -> 404', r.status === 404, r);
+  r = await uploadProof(bookedPay?.id, s, [PNG, 'shot.png', 'image/png']);
+  check('proof: another customer -> 404', r.status === 404, r);
+  r = await uploadProof(bookedPay?.id, b, [PNG, 'shot.png', 'image/png']);
+  check('proof: blocked customer -> 403', r.status === 403, r);
+  r = await uploadProof(bookedPay?.id, c, [Buffer.from('<script>alert(1)</script>'), 'shot.png', 'image/png']);
+  check('proof: HTML renamed to .png -> 415', r.status === 415, r);
+  r = await uploadProof(bookedPay?.id, c, [Buffer.alloc(0), 'shot.png', 'image/png']);
+  check('proof: empty file -> 400', r.status === 400, r);
+  r = await uploadProof(bookedPay?.id, c, [PNG, 'a.png', 'image/png'], [PNG, 'b.png', 'image/png']);
+  check('proof: two files -> 400', r.status === 400, r);
+  r = await call(PROOF(bookedPay?.id), { method: 'POST', headers: { ...bearer(c.token), 'Content-Type': 'application/json' }, body: '{}' });
+  check('proof: not multipart -> 415', r.status === 415, r);
+  r = await uploadProof(bookedPay?.id, c, [Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]), 'big.png', 'image/png']);
+  check('proof: over 10 MB -> 413', r.status === 413, r);
+  const longForm = new FormData();
+  longForm.append('file', new Blob([PNG], { type: 'image/png' }), 'shot.png');
+  longForm.append('reference', 'x'.repeat(121));
+  r = await call(PROOF(bookedPay?.id), { method: 'POST', headers: bearer(c.token), body: longForm });
+  check('proof: reference over 120 characters -> 400', r.status === 400, r);
+
+  const proofForm = new FormData();
+  proofForm.append('file', new Blob([PNG], { type: 'image/png' }), 'esewa-shot.png');
+  proofForm.append('reference', 'ESEWA-123');
+  r = await call(PROOF(bookedPay?.id), { method: 'POST', headers: bearer(c.token), body: proofForm });
+  check('proof: PNG -> 200 proof_submitted', r.status === 200 && r.body?.payment?.status === 'proof_submitted', r);
+  const { data: proofRow } = await admin.from('payments').select('status, proof_storage_path, customer_reference').eq('id', bookedPay?.id ?? crypto.randomUUID()).single();
+  const proofPrefix = `${c.id}/${bookedPay?.id}`;
+  if (proofPrefix) proofPrefixes.add(proofPrefix);
+  check('proof: path and reference stored on the payment',
+    proofRow?.status === 'proof_submitted' && proofRow?.proof_storage_path?.startsWith(`${proofPrefix}/`) && proofRow?.proof_storage_path?.endsWith('.png') && proofRow?.customer_reference === 'ESEWA-123', proofRow);
+  const proofDl = await admin.storage.from('payment-proofs').download(proofRow?.proof_storage_path ?? 'none');
+  check('proof: server can fetch the file', !proofDl.error && proofDl.data?.size === PNG.length, proofDl.error);
+  const proofPeek = await s.db.storage.from('payment-proofs').download(proofRow?.proof_storage_path ?? 'none');
+  check('proof: another customer cannot fetch it directly', !!proofPeek.error, proofPeek.data?.size);
+  const { data: held } = await admin.from('bookings').select('status, hold_expires_at, scheduled_at').eq('id', booked?.id ?? crypto.randomUUID()).single();
+  check('proof: hold frozen at the consultation start', held?.status === 'payment_pending' && held?.hold_expires_at === held?.scheduled_at, held);
+  check('proof: the held time is still not offered', !(await freeSlots()).some((x) => x.starts_at === at(0)), null);
+  r = await uploadProof(bookedPay?.id, c, [PNG, 'again.png', 'image/png']);
+  check('proof: a second proof -> 409', r.status === 409 && r.body?.error?.code === 'already_processed', r);
+  const { data: proofObjects } = await admin.storage.from('payment-proofs').list(proofPrefix);
+  check('proof: refused uploads left no extra files', proofObjects?.length === 1, proofObjects?.length);
+
+  // ---- payment review (8c) --------------------------------------------------------
+  // Fail-before: on 8b these routes do not exist, so the queue below 404s.
+  const QUEUE = '/api/payments/review-queue';
+  const decide = (paymentId, action, user, value) => postJson(`/api/payments/${paymentId}/${action}`, user, value ?? {});
+  r = await call(QUEUE);
+  check('queue: no token -> 401', r.status === 401, r);
+  r = await call(QUEUE, { headers: bearer(c.token) });
+  check('queue: customer -> 403', r.status === 403, r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+  r = await call(QUEUE, { headers: bearer(s.token) });
+  check('queue: moderator -> 403', r.status === 403, r);
+  r = await decide(bookedPay?.id ?? crypto.randomUUID(), 'approve', s, {});
+  check('review: moderator cannot approve -> 403', r.status === 403, r);
+
+  const f = await newUser('finance');
+  await addCustomer(f);
+  await admin.from('users').update({ role: 'finance' }).eq('id', f.id);
+  const f2 = await newUser('finance2');
+  await admin.from('users').update({ role: 'finance' }).eq('id', f2.id);
+
+  r = await call(QUEUE, { headers: bearer(f.token) });
+  const queued = r.body?.payments;
+  check('queue: finance sees the proof, oldest consultation first',
+    r.status === 200 && queued?.length === 1 && queued[0]?.id === bookedPay?.id && queued[0]?.proofUrl
+    && queued[0]?.booking?.startsAt === at(0) && queued[0]?.customer?.name && queued[0]?.amount === 1000, r.body);
+  const proofGet = await fetch(queued?.[0]?.proofUrl ?? 'http://localhost:0/none');
+  check('queue: the signed proof URL downloads', proofGet.status === 200 && (await proofGet.arrayBuffer()).byteLength === PNG.length, proofGet.status);
+
+  // A second proof lands while the first waits: the queue stays time-ordered.
+  const holdsOf = async (customerId) => (await admin.from('bookings').select('id', { count: 'exact', head: true })
+    .eq('customer_id', customerId).eq('status', 'payment_pending')).count;
+  const reviewer = (await holdsOf(s.customerId)) < 2 ? s : x;
+  const sSlot = (await freeSlots())[0]?.starts_at;
+  r = await book(reviewer, { astrologerId: astro.id, serviceId: callService, startsAt: sSlot });
+  const sBooking = r.body?.booking;
+  check('review: a second customer books and pays', r.status === 200 && sBooking?.id, r);
+  r = await uploadProof((await admin.from('payments').select('id').eq('booking_id', sBooking?.id ?? crypto.randomUUID()).maybeSingle()).data?.id
+    ?? crypto.randomUUID(), reviewer, [PNG, 's-shot.png', 'image/png']);
+  check('review: second proof -> 200', r.status === 200 && r.body?.payment?.status === 'proof_submitted', r);
+  const { data: sPayRow } = await admin.from('payments').select('proof_storage_path').eq('booking_id', sBooking?.id ?? crypto.randomUUID()).single();
+  proofPrefixes.add(sPayRow.proof_storage_path.split('/').slice(0, 2).join('/'));
+  r = await call(QUEUE, { headers: bearer(f.token) });
+  const starts = r.body?.payments?.map((p) => p.booking.startsAt) ?? [];
+  check('queue: two proofs, oldest consultation first',
+    r.status === 200 && starts.length === 2 && starts[0] === at(0) && starts[0] <= starts[1], starts);
+
+  r = await decide(bookedPay?.id, 'approve', f, {});
+  check('approve: finance -> 200 paid', r.status === 200 && r.body?.payment?.status === 'paid', r);
+  const { data: confirmed } = await admin.from('bookings').select('status').eq('id', booked?.id ?? crypto.randomUUID()).single();
+  check('approve: the booking is confirmed', confirmed?.status === 'confirmed', confirmed);
+  const { data: approvalAudit } = await admin.from('audit_log').select('actor_user_id, previous_state, new_state')
+    .eq('entity_id', bookedPay?.id ?? crypto.randomUUID()).eq('action', 'payment.approved');
+  check('approve: written to the audit log', approvalAudit?.length === 1 && approvalAudit[0]?.actor_user_id === f.id
+    && approvalAudit[0]?.previous_state?.status === 'proof_submitted' && approvalAudit[0]?.new_state?.status === 'paid', approvalAudit);
+  r = await decide(bookedPay?.id, 'approve', f, {});
+  check('approve: again -> 409 already_processed', r.status === 409 && r.body?.error?.code === 'already_processed', r);
+  r = await decide(bookedPay?.id, 'reject', f, { reason: 'late' });
+  check('reject after approve -> 409', r.status === 409, r);
+
+  const sPayId = (await admin.from('payments').select('id').eq('booking_id', sBooking?.id ?? crypto.randomUUID()).maybeSingle()).data?.id;
+  r = await decide(sPayId ?? crypto.randomUUID(), 'reject', f, {});
+  check('reject: missing reason -> 400', r.status === 400, r);
+  r = await decide(sPayId ?? crypto.randomUUID(), 'reject', f, { reason: '   ' });
+  check('reject: blank reason -> 400', r.status === 400, r);
+  r = await decide(sPayId ?? crypto.randomUUID(), 'reject', f, { reason: 'No money arrived' });
+  check('reject: finance -> 200 rejected', r.status === 200 && r.body?.payment?.status === 'rejected', r);
+  const { data: cancelled } = await admin.from('bookings').select('status').eq('id', sBooking?.id ?? crypto.randomUUID()).single();
+  check('reject: the booking is cancelled', cancelled?.status === 'cancelled', cancelled);
+  check('reject: the slot is offered again', (await freeSlots()).some((x) => x.starts_at === sSlot), null);
+  const { data: rejectionAudit } = await admin.from('audit_log').select('actor_user_id, reason')
+    .eq('entity_id', sPayId ?? crypto.randomUUID()).eq('action', 'payment.rejected');
+  check('reject: written to the audit log with the reason',
+    rejectionAudit?.length === 1 && rejectionAudit[0]?.actor_user_id === f.id && rejectionAudit[0]?.reason === 'No money arrived', rejectionAudit);
+  r = await decide(sPayId ?? crypto.randomUUID(), 'approve', f, {});
+  check('approve after reject -> 409', r.status === 409, r);
+
+  // Nobody decides their own booking: f books, pays, and is refused; f2 cleans up.
+  const fSlot = (await freeSlots())[0]?.starts_at;
+  r = await book(f, { astrologerId: astro.id, serviceId: callService, startsAt: fSlot });
+  const fBooking = r.body?.booking;
+  check('review: finance books their own consultation', r.status === 200 && fBooking?.id, r);
+  const fPayId = (await admin.from('payments').select('id').eq('booking_id', fBooking?.id ?? crypto.randomUUID()).maybeSingle()).data?.id;
+  r = await uploadProof(fPayId ?? crypto.randomUUID(), f, [PNG, 'f-shot.png', 'image/png']);
+  check('review: own proof -> 200', r.status === 200, r);
+  const { data: fPayRow } = await admin.from('payments').select('proof_storage_path').eq('id', fPayId ?? crypto.randomUUID()).single();
+  proofPrefixes.add(fPayRow.proof_storage_path.split('/').slice(0, 2).join('/'));
+  r = await decide(fPayId ?? crypto.randomUUID(), 'approve', f, {});
+  check('review: self-approval -> 403', r.status === 403 && r.body?.error?.code === 'forbidden', r);
+  r = await decide(fPayId ?? crypto.randomUUID(), 'reject', f2, { reason: 'Staff bookings are settled separately' });
+  check('review: another finance reviewer can still decide -> 200', r.status === 200 && r.body?.payment?.status === 'rejected', r);
+
+  r = await call(QUEUE, { headers: bearer(f2.token) });
+  check('queue: empty once everything is decided', r.status === 200 && r.body?.payments?.length === 0, r.body);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);
@@ -413,6 +564,14 @@ try {
   let files = 0;
   for (const id of conversationIds) files += (await bucket.list(id)).data?.length ?? 0;
   check('throwaway chat files removed', files === 0, files);
+  const proofs = admin.storage.from('payment-proofs');
+  for (const prefix of proofPrefixes) {
+    const { data } = await proofs.list(prefix);
+    if (data?.length) await proofs.remove(data.map((o) => `${prefix}/${o.name}`));
+  }
+  let stray = 0;
+  for (const prefix of proofPrefixes) stray += (await proofs.list(prefix)).data?.length ?? 0;
+  check('throwaway proof files removed', stray === 0, stray);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : '\ntest-server: all checks passed');

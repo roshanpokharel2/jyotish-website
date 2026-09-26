@@ -198,6 +198,13 @@ function accIsStaff(){
   return ['moderator','support','finance','admin','super_admin'].includes(accRole);
 }
 
+// Payment review is narrower than staff: finance, admin and super_admin decide;
+// moderators and support never see the queue. Presentation only -- the endpoints
+// enforce the same list, plus the no-self-approval rule.
+function accIsReviewer(){
+  return ['finance','admin','super_admin'].includes(accRole);
+}
+
 async function renderMyAccount(){
   const t = T[LANG];
   const grid = document.getElementById('myAccGrid');
@@ -216,6 +223,7 @@ async function renderMyAccount(){
     ['jyotish', jyotishRecord ? t.jyotish.statusLabel : t.jyotish.title]
   ];
   if(accIsStaff()) tabs.push(['applications', t.jyotishAdmin.title]);
+  if(accIsReviewer()) tabs.push(['payments', t.payReview.title]);
   if(!tabs.some(tab => tab[0] === accTab)) accTab = 'profile';
 
   grid.innerHTML = `
@@ -229,6 +237,7 @@ async function renderMyAccount(){
   if(accTab === 'requests') return renderAccountRequests(body);
   if(accTab === 'jyotish') return renderJyotishPanel(body);
   if(accTab === 'applications') return renderJyotishApplicationsQueue(body);
+  if(accTab === 'payments') return renderPaymentsQueue(body);
 }
 
 function renderAccountProfile(body){
@@ -372,5 +381,68 @@ async function reviewJyotishApplication(id, status){
 
   const { error } = await getMainSupabase().from('astrologers').update(patch).eq('id', id);
   if(typeof showToast === 'function') showToast(error ? error.message : t.done);
+  renderMyAccount();
+}
+
+/* ============================================================
+   PAYMENT VERIFICATION QUEUE (finance, admin, super_admin)
+   Oldest consultation first. Proof opens in a new tab through a short-lived
+   signed URL; approve/reject go through the server endpoints, which write the
+   audit row in the same transaction. The browser never writes payments.
+============================================================ */
+
+async function accToken(){
+  const session = (await getMainSupabase().auth.getSession()).data.session;
+  return session?.access_token || null;
+}
+
+async function renderPaymentsQueue(body){
+  const t = T[LANG].payReview;
+  const token = await accToken();
+  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
+
+  let queue;
+  try{
+    const response = await fetch('/api/payments/review-queue', { headers:{ Authorization:`Bearer ${token}` } });
+    queue = await response.json();
+    if(!response.ok) throw new Error(queue.error?.message || t.none);
+  } catch(err){
+    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
+    return;
+  }
+  if(!queue.payments?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
+
+  body.innerHTML = queue.payments.map(row => `
+    <div class="review-row" style="align-items:flex-start;gap:12px;">
+      <span>
+        <b>${escapeHtml(row.customer?.name || '—')} → ${escapeHtml(row.astrologer?.name || '—')}</b><br>
+        <small>${escapeHtml(row.service?.name || '')} · ${escapeHtml(row.amount)} ${escapeHtml(row.currency)}</small><br>
+        <small>${escapeHtml(new Date(row.booking.startsAt).toLocaleString())}${row.customerReference ? ` · ${escapeHtml(row.customerReference)}` : ''}</small><br>
+        <small><a href="${escapeHtml(row.proofUrl)}" target="_blank" rel="noopener">${escapeHtml(t.proof)}</a></small>
+      </span>
+      <span style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-gold" onclick="reviewPayment('${escapeHtml(row.id)}','approve')">${escapeHtml(t.approve)}</button>
+        <button class="btn btn-ghost" onclick="reviewPayment('${escapeHtml(row.id)}','reject')">${escapeHtml(t.reject)}</button>
+      </span>
+    </div>`).join('');
+}
+
+async function reviewPayment(id, action){
+  const t = T[LANG].payReview;
+  const token = await accToken();
+  if(!token) return;
+  let reason = null;
+  if(action === 'reject'){
+    reason = window.prompt(t.reasonPrompt);
+    if(!reason || !reason.trim()) return;
+    reason = reason.trim();
+  }
+  const response = await fetch(`/api/payments/${encodeURIComponent(id)}/${action}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify(action === 'reject' ? { reason } : {})
+  });
+  const result = await response.json().catch(()=>({}));
+  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
   renderMyAccount();
 }
