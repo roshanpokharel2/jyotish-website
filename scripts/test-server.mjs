@@ -533,6 +533,34 @@ try {
   r = await call(QUEUE, { headers: bearer(f2.token) });
   check('queue: empty once everything is decided', r.status === 200 && r.body?.payments?.length === 0, r.body);
 
+  // ---- email drain (12b) ----------------------------------------------------------
+  // Fail-before: without 12b this route 404s.
+  const DRAIN = '/api/email/drain';
+  const drain = (secret) => call(DRAIN, { method: 'POST', headers: secret ? { Authorization: `Bearer ${secret}` } : {} });
+  r = await drain(null);
+  check('drain: no secret -> 401', r.status === 401, r);
+  r = await drain('wrong-secret');
+  check('drain: wrong secret -> 401', r.status === 401, r);
+  // Muted recipients leave the queue quietly instead of being mailed.
+  await admin.from('notification_preferences').upsert({ user_id: s.id, email_transactional: false });
+  const jobOf = async (userId) => (await admin.from('email_jobs').select('id').eq('recipient_user_id', userId)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()).data?.id;
+  const cJob = await jobOf(c.id);
+  const sJob = await jobOf(s.id);
+  const fJob = await jobOf(f.id);
+  r = await drain(env.CRON_SECRET);
+  // sent is exact (orphaned jobs from older runs have no recipient and can only
+  // cancel); cancelled is at-least (those orphans cancel here too).
+  check('drain: sends the queue (muted recipient cancelled)',
+    r.status === 200 && r.body?.drained?.sent === 2 && r.body?.drained?.cancelled >= 1, r.body);
+  const jobStatus = async (id) => (await admin.from('email_jobs').select('status, attempts, sent_at').eq('id', id ?? '').maybeSingle()).data;
+  const [cDone, fDone, sDone] = await Promise.all([jobStatus(cJob), jobStatus(fJob), jobStatus(sJob)]);
+  check('drain: fresh jobs sent, muted job cancelled',
+    cDone?.status === 'sent' && cDone.attempts === 1 && cDone.sent_at && fDone?.status === 'sent' && sDone?.status === 'cancelled',
+    { cDone, fDone, sDone });
+  r = await drain(env.CRON_SECRET);
+  check('drain: nothing due -> all zero', r.status === 200 && r.body?.drained?.sent === 0 && r.body?.drained?.failed === 0 && r.body?.drained?.cancelled === 0, r.body);
+
   // ---- booking form payment step (8d) -------------------------------------------------
   // Fail-before: on 8c the booking response carries no payment id for the form.
   const xSlot = (await freeSlots())[0]?.starts_at;
