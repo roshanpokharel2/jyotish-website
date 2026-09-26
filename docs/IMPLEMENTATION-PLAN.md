@@ -402,8 +402,22 @@ refused; 0013 before 0012 → refused; gap → refused; migration without its in
 refused; raw re-run of 0012 through SQL → rolled back on the primary key; second runner
 while one holds the lock → refused (exit 4). 0002–0011 tests still pass.
 
-**Not done here** The fresh-install path (`schema.sql` + 0001–0012 on an empty project)
-is still unverified; it needs a second throwaway project.
+**Fresh install verified** on the dev project (its data was disposable): every
+repo-owned object in `public`, the storage policies and buckets were dropped, then
+`schema.sql` + 0001–0012 ran in one pass without errors. A catalog fingerprint (674
+entries: tables, columns, constraints, indexes, policies, grants, functions, triggers,
+buckets, realtime) is identical to the database before the reset, apart from CRLF line
+endings in 10 function bodies first pasted through the SQL editor. All tests and the
+Storage HTTP round trip pass on the rebuilt database. The existing login was kept and
+re-linked (`super_admin`, customer row); the practitioner row and old audit rows are gone.
+
+Repeatable with `database/dev/reset.sql` + rebuild + `database/dev/relink_users.sql`
+(see `database/migrations/README.md`); a second full cycle rebuilt the identical
+fingerprint. That run also fixed `db.mjs` reading tracking state only once per batch.
+
+Supabase's optional `ensure_rls` event trigger (auto-enables RLS on new tables) calls
+`public.rls_auto_enable()`, which is **not** a repo object. Any reset must leave that
+function alone; dropping it cascades to the event trigger.
 
 **Rollback** Fix forward. Dropping the table only removes the protection.
 

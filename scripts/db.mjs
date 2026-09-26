@@ -90,8 +90,8 @@ if (wantsStatus) {
   process.exit(0);
 }
 
-// Why a migration must not run now, or null. Checked just before each file, so a
-// batch like "0013 0014" works in order.
+// Why a migration must not run now, or null. Checked just before each file against
+// freshly read state, so a batch like "0013 0014" (or reset + rebuild) works in order.
 const refusal = (file, sql) => {
   const v = versionOf(file);
   if (!v) return null; // tests, schema.sql, probes: not tracked
@@ -121,6 +121,7 @@ let failed = false;
 for (const file of files) {
   process.stdout.write(`\n== ${file}\n`);
   const sql = readFileSync(file, 'utf8').replace(/^﻿/, '');
+  if (versionOf(file)) await loadRecorded(); // an earlier file in this batch may have changed it
   const why = refusal(file, sql);
   if (why) {
     failed = true;

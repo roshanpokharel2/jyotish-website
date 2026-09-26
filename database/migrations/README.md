@@ -80,6 +80,13 @@ not contain its own `schema_migrations` insert; and a second concurrent run. On 
 database (no `schema_migrations` yet) `schema.sql` and 0001–0011 run as before. Test fixtures write to `auth.users`, so the
 JWT claims they set must include both `sub` and `role` to match a real access token.
 
+## Rebuilding development from scratch
+
+`database/dev/reset.sql` (development only) drops everything the repo creates, keeping
+logins and Supabase's own objects. Then run `schema.sql`, every migration in order,
+`database/dev/relink_users.sql` (gives surviving logins their `public.users` row back as
+customers — restore staff roles by hand) and the tests. It can be one `db.mjs` batch.
+
 ## Tests
 
 `../tests/NNNN_*_test.sql` — run with `node scripts/db.mjs`, or paste into the SQL editor. Each wraps itself in a
