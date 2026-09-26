@@ -65,8 +65,8 @@ Migrations are additive `ALTER`s in `database/migrations/NNNN_name.sql`.
 per step; a fresh project runs it once and then every migration in order. Self-asserting
 checks live in `database/tests/`.
 
-**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–D
-done, see below). The project in `.env` is the **development** database; 0001–0009 are applied
+**Status:** Steps 1–6 done. Phase 1 security hardening is under way (Checkpoints A–F
+done, see below). The project in `.env` is the **development** database; 0001–0011 are applied
 there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -315,6 +315,69 @@ passes after (actor deleted, audit entry unchanged, log still append-only);
 0002–0008 still pass; re-runnable.
 
 **Rollback** Fix forward. Re-adding the FK would bring the delete failure back.
+
+#### Checkpoint E — `0010_chat_rls.sql` ✅ (applied to development)
+
+**What**
+- `public.is_chat_participant(conversation)` — one security-definer membership check
+  (active participant of *that* conversation), used by every chat policy.
+- `chat_messages`: read = participant of that conversation; post = as yourself, active
+  participant, conversation active, `message_type = 'text'`, body 1–4000 chars; **no
+  update or delete policy**. A BEFORE INSERT trigger sets `created_at`, `status`,
+  `delivered_at`, `read_at` and bumps the conversation's `last_message_at`.
+- `chat_participants`: you also see co-participants of your conversations.
+- `message_attachments`: read by participants of the message's conversation; the
+  browser insert policy is gone (the server writes attachment rows, Checkpoint I).
+- Unique index: one open general conversation per customer/practitioner pair.
+
+**Why** The stored policies compared `cp.conversation_id = cp.conversation_id`. Reproduced
+in dev: a customer in one conversation read another customer's private messages, posted
+into their conversation, edited both parties' messages, and moved a message between
+conversations. Impersonation was already blocked.
+
+**Test** `database/tests/0010_chat_rls_test.sql` (2 conversations, 3 users, 14 groups
+of checks incl. closed conversations, removed participants, attachments, duplicate
+conversations): fails before 0010, passes after; 0002–0009 still pass; re-runnable.
+
+**Not done here** Realtime delivery under the new policies is verified end to end with
+the repaired client in Checkpoint J. Conversation creation, read state and attachments
+are server endpoints (Checkpoint I). Storage bucket policies are Checkpoint F.
+
+**Rollback** Fix forward. The old policies are the vulnerability.
+
+#### Checkpoint F — `0011_storage_buckets.sql` ✅ (applied to development)
+
+**What**
+- Buckets `chat-attachments` and `vastu-files` created; all three buckets (with
+  `jyotish-documents`) private, 10 MB, JPEG / PNG / PDF only.
+- `chat-attachments`: the browser upload policy is gone — the server uploads
+  (Checkpoint I). Participants still read `{conversation_id}/…`.
+- `vastu-files`: uploads must be `{auth.uid()}/{own vastu project id}/{file}`.
+- `jyotish-documents`: only reviewers (moderator / admin / super_admin) read other
+  people's credentials; support and finance no longer do.
+- No UPDATE or DELETE policy on any bucket, so nothing is overwritten or moved.
+- `is_chat_participant()` is executable by `anon` (always false there). Without it an
+  anonymous request that reached `chat_participants` failed with "permission denied".
+
+**Why** Reproduced in dev: every chat and Vastu upload failed with `Bucket not found`;
+`jyotish-documents` accepted an HTML file containing a script; the browser could upload
+straight into a chat conversation, bypassing 0010's server-only attachment rule.
+
+**Test** `database/tests/0011_storage_buckets_test.sql`: fails before 0011, passes
+after; 0002–0010 still pass; re-runnable. Plus an HTTP round trip through the Storage
+API with the anon key: a valid Vastu PNG uploads and its owner downloads it; an HTML
+file, a 10 MB + 1 byte file, a foreign project folder, an overwrite and a browser
+chat upload are refused; there is no public or anonymous download.
+
+**Client impact** `vastu-upload.js` already uses the required path and types. The chat
+page's file button now gets a 403 (its `message_type = 'file'` insert was already refused
+by 0010); it moves to the server endpoint in I/J.
+
+**Not done here** Nothing deletes old Storage files yet (retention is a later decision).
+The size and type limits trust the declared `Content-Type`; checking what the file
+really contains is a server-side job if uploads move behind the server.
+
+**Rollback** Fix forward.
 
 ---
 

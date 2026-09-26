@@ -57,7 +57,7 @@ Before running the app, set up the Supabase project and paste your values into t
 1. Create a new Supabase project at https://supabase.com
 2. Open the SQL editor and run the SQL in `database/schema.sql`
 3. Run each file in `database/migrations/` in numeric order (see `database/migrations/README.md`)
-4. Create a storage bucket named `chat-attachments`
+4. Storage buckets come from migration 0011 — nothing to create by hand
 5. Enable Realtime for the relevant tables (see schema comments)
 6. Enable Email/Password auth in Supabase Authentication
 7. Create the first astrologer user through Auth > Users, then map that user to the `astrologers` table — see section 8. There is **no** seeded astrologer; `astrologers.user_id` requires a real Auth user.
@@ -147,16 +147,10 @@ VALUES ('<astrologer-user-id>', '<astrologer-user-id>', 'Krishna Prasad Pokharel
 
 ## 5. Storage setup
 
-Create a storage bucket named `chat-attachments`.
-
-Bucket policy recommendations:
-
-- Users can upload files only when they are participants in the conversation
-- Users can read files only if they belong to the same conversation
-- Only authenticated users can access the bucket
-- Avoid static public access
-
-The SQL schema includes helper logic and policies for attachments.
+Nothing to create by hand: `database/migrations/0011_storage_buckets.sql` creates the
+private `chat-attachments`, `vastu-files` and `jyotish-documents` buckets (10 MB,
+JPEG / PNG / PDF) and their policies. Chat files are uploaded by the server, not the
+browser; participants read them.
 
 ---
 

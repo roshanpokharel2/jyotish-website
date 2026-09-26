@@ -26,6 +26,8 @@ Supabase Dashboard → SQL Editor → paste the file → Run. Apply in numeric o
 | `0007_astrologer_protected_fields.sql` | Phase 1 B | Fee and review fields not self-editable; no reviewer acts on their own practitioner row; documents frozen after review. **Supersedes** `guard_astrologer_status()` from 0005/0006 |
 | `0008_customer_status_guard.sql` | Phase 1 C | Customers cannot set or change their own `status`; status changes are service-role only and audited |
 | `0009_audit_log_actor_delete.sql` | Phase 1 D | `audit_log.actor_user_id` is no longer a foreign key, so users who acted can be deleted and the log keeps their id |
+| `0010_chat_rls.sql` | Phase 1 E | Chat policies scoped to the specific conversation via `is_chat_participant()`; text-only browser posts, no message edits; attachment rows server-only; one open conversation per pair |
+| `0011_storage_buckets.sql` | Phase 1 F | `chat-attachments` / `vastu-files` created; all buckets private, 10 MB, JPEG/PNG/PDF; no browser chat uploads; Vastu uploads tied to own project; only reviewers read credential documents |
 
 ## Function privileges — read this before adding a `security definer` function
 
@@ -40,6 +42,11 @@ Every new privileged function must therefore do:
 revoke all on function public.thing(args) from public, anon, authenticated;
 grant execute on function public.thing(args) to service_role;  -- plus authenticated only if truly needed
 ```
+
+A helper that policies call must be executable by every role those policies apply to,
+including `anon`, or an anonymous request fails with "permission denied" instead of
+returning nothing. That is only safe for a function that answers about `auth.uid()`
+alone, like `is_chat_participant()` (0011).
 
 Trigger functions (returning `trigger`) are exempt: Postgres refuses to call them
 directly. Audit the current state with:

@@ -164,3 +164,26 @@ platform's rules, never a direct self-edit.
 Related rule from the same migration: **nobody reviews their own practitioner row**,
 whatever their role. Approval is a separation-of-duties control, so a staff member who
 also practises needs a second reviewer.
+
+---
+
+## AD-14 — Chat authorization model
+
+- **RLS decides who sees and posts** (0010). Every chat policy goes through
+  `is_chat_participant(conversation)`: an active participant of *that* conversation.
+  RLS keeps protecting messages even if a client or the server layer is compromised.
+- **The browser only posts text.** File/system messages, attachment rows, conversation
+  creation, closing and read state are server operations (Next.js, Checkpoint I), which
+  validate first and then write with the service role.
+- **Messages are immutable.** No edit, no delete, no client-chosen timestamps.
+- **Files follow the same rule** (0011). `chat-attachments` is private and has no browser
+  upload policy; participants read `{conversation_id}/…`. No bucket lets the browser
+  overwrite, move or delete an object.
+- **Staff do not read chats** by default. Moderation access, if needed for disputes, is
+  a later, audited server operation — not a blanket RLS grant.
+
+**Temporary Phase 1 rule — revisit at Step 10.** Any signed-in customer may open a
+conversation with any *active* practitioner. Once bookings and payments exist,
+consultation chat will be tied to a booking/consultation relationship; the
+`booking_id` / `consultation_id` columns and the index that only limits *general*
+conversations are there for that. Do not let this rule become permanent by default.
