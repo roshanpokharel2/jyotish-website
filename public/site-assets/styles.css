@@ -388,7 +388,10 @@
   .booking-record-item{border:1px solid var(--line);border-radius:9px;margin:7px 0;overflow:hidden;}
   .booking-record-item>summary{font-size:.82rem;font-weight:700;color:var(--navy);padding:10px 12px;}
   .booking-record-item[open]>summary{background:#fbf3e4;border-bottom:1px solid var(--line);}
-  .booking-record-item pre{margin:0;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;font: .75rem/1.5 Consolas,monospace;color:var(--ink-soft);background:#fffaf0;}
+  .booking-record-detail{padding:6px 16px 14px;max-width:600px;}
+  .booking-record-detail>.review-row{display:grid;grid-template-columns:minmax(110px,170px) 1fr;gap:16px;border-bottom:none;padding:8px 0;}
+  .booking-record-detail>.review-row>span{color:var(--ink-soft);}
+  .booking-record-detail>.review-row>b{text-align:left;overflow-wrap:anywhere;}
 
   .disclaimer-box{background:#fbf3e4;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:14px 16px;font-size:.82rem;color:var(--ink-soft);margin:14px 0;}
 

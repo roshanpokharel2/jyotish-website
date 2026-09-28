@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Consultation Chat MVP</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.109.0"></script>
+    <script src="app-config.js"></script>
     <style>
       :root {
         --navy: #12203f;
@@ -209,6 +209,26 @@
         opacity: 1;
         transform: translateX(-50%) translateY(0);
       }
+      .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .topbar .user-badge { margin-bottom: 0; }
+      .topbar button { width: auto; padding: 8px 14px; }
+      .app-shell > .status { margin: 0 0 12px; }
+      .sidebar h3 + div { margin-bottom: 18px; }
+      .conversation-item {
+        width: 100%; display: flex; flex-direction: column; gap: 2px; text-align: left;
+        background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
+        padding: 10px 12px; margin-bottom: 8px; font-weight: 400;
+      }
+      .conversation-item strong { color: var(--navy); }
+      .conversation-item span { font-size: 0.72rem; color: #555; }
+      .conversation-item.active { border-color: var(--gold); box-shadow: inset 3px 0 0 var(--gold); }
+      .empty { font-size: 0.8rem; color: #666; margin: 0 0 12px; }
+      .bubble .attachment {
+        width: auto; padding: 6px 10px; margin-bottom: 6px; background: var(--navy); color: var(--ivory);
+        font-weight: 600; overflow-wrap: anywhere; text-align: left;
+      }
+      .bubble p { white-space: pre-wrap; overflow-wrap: anywhere; }
+      button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
       @media (max-width: 760px) {
         .layout {
           grid-template-columns: 1fr;
@@ -218,42 +238,35 @@
   </head>
   <body>
     <div class="auth-shell" id="authShell">
-      <h1 id="authTitle">Customer access</h1>
+      <h1>Sign in to chat</h1>
       <form id="authForm">
         <div class="field">
-          <label for="authMode">I am signing in as</label>
-          <select id="authMode">
-            <option value="customer">Customer</option>
-            <option value="astrologer">Astrologer</option>
-          </select>
-        </div>
-        <div class="field">
           <label for="email">Email</label>
-          <input id="email" type="email" placeholder="you@example.com" />
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input id="password" type="password" placeholder="••••••••" />
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
         </div>
-        <div class="field" style="display:none;">
-          <label for="fullName">Full name</label>
-          <input id="fullName" type="text" placeholder="Full name" />
-        </div>
-        <div class="field">
-          <label for="role">Role</label>
-          <input id="role" type="text" value="customer" readonly />
-        </div>
-        <button id="submitText" type="submit">Sign in as customer</button>
+        <button type="submit">Sign in</button>
       </form>
-      <div class="status" id="statusText" data-type="info">Ready to authenticate.</div>
+      <div class="status" id="statusText" data-type="info">No account yet? Register on the <a href="/">main site</a> first.</div>
     </div>
 
     <div class="app-shell hidden" id="appShell">
-      <div class="user-badge" id="userBadge">USER</div>
+      <div class="topbar">
+        <div class="user-badge" id="userBadge">USER</div>
+        <button type="button" class="secondary" id="signOutButton">Sign out</button>
+      </div>
+      <div class="status hidden" id="appStatus" data-type="error"></div>
       <div class="layout">
         <aside class="panel sidebar">
-          <h3>Available astrologers</h3>
-          <div id="astrologerList"></div>
+          <h3>Your conversations</h3>
+          <div id="conversationList"></div>
+          <div id="astrologerSection" class="hidden">
+            <h3>Available astrologers</h3>
+            <div id="astrologerList"></div>
+          </div>
         </aside>
 
         <main class="panel chat-panel">
@@ -269,12 +282,12 @@
           <div class="upload-wrap" style="padding: 12px 18px 0;">
             <label for="uploadInput" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; color: var(--navy);">
               <span>Attachment</span>
-              <input id="uploadInput" type="file" />
+              <input id="uploadInput" type="file" accept="image/jpeg,image/png,application/pdf" />
             </label>
           </div>
 
           <div class="composer">
-            <input id="messageInput" type="text" placeholder="Type a message..." />
+            <input id="messageInput" type="text" maxlength="4000" placeholder="Choose a conversation to start." />
             <button id="sendButton" type="button">Send</button>
           </div>
         </main>

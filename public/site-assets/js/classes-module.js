@@ -70,11 +70,7 @@ async function submitEnroll(){
   const seq = String(Math.floor(Math.random()*9000+1000));
   enrollState.enrollId = `JVS-CLS-${year}-${seq}`;
   enrollState.submitted = true;
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.enroll) || 'enroll_';
-    await window.JYOTISH_HELPERS.safeStorageSet(key + enrollState.enrollId, JSON.stringify(enrollState));
-  }
+  if (typeof saveAuthenticatedSubmission === 'function') await saveAuthenticatedSubmission('enrollment', enrollState);
   showToast(t.enrollSuccessTitle);
   renderEnrollPanel();
 }

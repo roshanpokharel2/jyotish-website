@@ -34,11 +34,7 @@ async function submitContact(){
   if(!isValidPhone(contactState.phone)){ contactState.error = LANG==='ne' ? 'कृपया मान्य फोन नम्बर लेख्नुहोस्।' : 'Please enter a valid phone number.'; renderContactForm(); return; }
   contactState.error = '';
   contactState.submitted = true;
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.contact) || 'contact_';
-    await window.JYOTISH_HELPERS.safeStorageSet(key + Date.now(), JSON.stringify(contactState));
-  }
+  if (typeof saveAuthenticatedSubmission === 'function') await saveAuthenticatedSubmission('contact', contactState);
   showToast(t.toastContact);
   renderContactForm();
 }

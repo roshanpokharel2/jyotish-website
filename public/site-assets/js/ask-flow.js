@@ -5,24 +5,26 @@
 
 const askState = { step:1, name:'',phone:'',email:'',dobBsYear:'',dobBsMonth:'',dobBsDay:'',dobAd:'',tob:'',pob:'',birthCountry:'', question:'', paymentAttested:false, termsAccepted:false, paymentRef:'', submitted:false, questionId:null, token:null, history:[], _error:null };
 
-function askProfileKey(){ return 'jyotish_ask_birth_profile'; }
+// The birth profile and question history live in the database (customers,
+// question_consultations), not in the browser. Asking needs an account.
+let askProfileLoadedFor = null;
 function askLoadProfile(){
-  const raw = window.JYOTISH_HELPERS?.safeStorageGet(askProfileKey());
-  if(!raw) return false;
-  try { const profile = JSON.parse(raw); Object.assign(askState, profile); return Boolean(profile.name && profile.dobAd && profile.tob && profile.pob && profile.birthCountry); } catch(e){ return false; }
+  const c = typeof mainCustomer !== 'undefined' ? mainCustomer : null;
+  if(!c || askProfileLoadedFor === c.id) return;
+  askProfileLoadedFor = c.id;
+  Object.assign(askState, {
+    name:c.full_name || '', phone:c.phone || '', email:c.email || '',
+    dobAd:c.dob_ad || '', dobBsYear:c.dob_bs_year ? String(c.dob_bs_year) : '',
+    dobBsMonth:c.dob_bs_month ? String(c.dob_bs_month) : '', dobBsDay:c.dob_bs_day ? String(c.dob_bs_day) : '',
+    tob:c.birth_time ? String(c.birth_time).slice(0,5) : '', pob:c.birth_place || '', birthCountry:c.birth_country || ''
+  });
 }
-function askSaveProfile(){
-  const profile = {name:askState.name,phone:askState.phone,email:askState.email,dobBsYear:askState.dobBsYear,dobBsMonth:askState.dobBsMonth,dobBsDay:askState.dobBsDay,dobAd:askState.dobAd,tob:askState.tob,pob:askState.pob,birthCountry:askState.birthCountry};
-  const localSave = window.JYOTISH_HELPERS?.safeStorageSet(askProfileKey(), JSON.stringify(profile));
+async function askSaveProfile(){
   const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
-  if(client && mainCustomer?.id){
-    return Promise.all([localSave, client.from('customers').update({full_name:profile.name,phone:profile.phone||null,email:profile.email||null,dob_ad:profile.dobAd,dob_bs_year:Number(profile.dobBsYear)||null,dob_bs_month:Number(profile.dobBsMonth)||null,dob_bs_day:Number(profile.dobBsDay)||null,birth_time:profile.tob,birth_place:profile.pob,birth_country:profile.birthCountry}).eq('id',mainCustomer.id)]).then(([,result])=>{ if(result.error) console.warn('Ask birth profile sync failed:',result.error); });
-  }
-  return localSave;
-}
-function askLoadHistory(){
-  const raw = window.JYOTISH_HELPERS?.safeStorageGet('jyotish_ask_history');
-  try { askState.history = raw ? JSON.parse(raw) : []; } catch(e){ askState.history=[]; }
+  if(!client || !mainCustomer?.id) return;
+  const {data, error} = await client.from('customers').update({full_name:askState.name,phone:askState.phone||null,email:askState.email||null,dob_ad:askState.dobAd||null,dob_bs_year:Number(askState.dobBsYear)||null,dob_bs_month:Number(askState.dobBsMonth)||null,dob_bs_day:Number(askState.dobBsDay)||null,birth_time:askState.tob||null,birth_place:askState.pob||null,birth_country:askState.birthCountry||null}).eq('id',mainCustomer.id).select('*').single();
+  if(error){ console.warn('Ask birth profile sync failed:',error); return; }
+  mainCustomer = data;
 }
 let askRemoteHistoryLoading = false;
 let askRemoteHistoryLoaded = false;
@@ -37,7 +39,6 @@ async function askRefreshRemoteHistory(){
   askState.history = data.map(item=>({questionId:item.status==='UNPAID' ? null : (item.question_id ? `Q-${String(item.question_id).padStart(6,'0')}` : item.id),requestId:item.status==='UNPAID' ? 'Payment pending' : null,question:item.question_text,status:item.status,answer:item.answer,createdAt:item.created_at}));
   renderAsk();
 }
-function askSaveHistory(){ return window.JYOTISH_HELPERS?.safeStorageSet('jyotish_ask_history', JSON.stringify(askState.history)); }
 function askHasSavedProfile(){ return Boolean(askState.name && askState.dobAd && askState.tob && askState.pob && askState.birthCountry); }
 function askStatusLabel(status){ return status === 'ANSWERED' ? '✓ Answered' : status === 'PAID' ? '✓ Paid' : '⏳ Pending'; }
 function renderAskDashboard(){
@@ -65,6 +66,7 @@ function renderAsk(){
   renderAskStepBar(askTopStep());
   const panel = document.getElementById('askPanel');
   if(!panel) return;
+  askLoadProfile();
   askRefreshRemoteHistory();
   if(askHasSavedProfile() && askState.step===1 && !askState.editProfile){ panel.innerHTML = renderAskDashboard(); return; }
 
@@ -119,6 +121,11 @@ function askBack(){ if(askState.step>1){ askState.step--; askState._error=null; 
 
 async function askNext(){
   if(askState.step===1){
+    if(typeof mainAuthUser === 'undefined' || !mainAuthUser){
+      askState._error = T[LANG].signInToContinue;
+      renderAsk();
+      return;
+    }
     const validationError = detailsValidationError(askState);
     if(validationError){
       askState._error = validationError;
@@ -164,22 +171,20 @@ async function submitAsk(){
   const requestId = `ASK-${Date.now()}`;
   askState.requestId = requestId;
   const payload = {request_id:requestId, question:askState.question, fee:100, currency:'NPR', payment_status:'unverified', question_status:'UNPAID', payment_ref:askState.paymentRef, profile:{name:askState.name,phone:askState.phone,email:askState.email,dob_bs:[askState.dobBsYear,askState.dobBsMonth,askState.dobBsDay].join('-'),dob_ad:askState.dobAd,tob:askState.tob,pob:askState.pob,birth_country:askState.birthCountry}};
-  if(client && mainAuthUser){
-    let error = null;
-    if(mainCustomer?.id){
-      const result = await client.from('question_consultations').insert({customer_id:mainCustomer.id,customer_name:askState.name,birth_snapshot:{dob_ad:askState.dobAd,dob_bs:[askState.dobBsYear,askState.dobBsMonth,askState.dobBsDay],birth_time:askState.tob,birth_place:askState.pob,birth_country:askState.birthCountry},question_text:askState.question}).select('id,question_id').single();
-      error = result.error;
-      if(!error) askState.pendingRecordId = result.data.id;
-    } else {
-      const result = await client.from('service_requests').insert({user_id:mainAuthUser.id,request_type:'question',payload,status:'new'});
-      error = result.error;
-    }
-    if(error){ askState._error=error.message; renderAsk(); return; }
+  // Signed out, the question used to be kept only in this browser, so it never reached
+  // anyone. It is now refused instead (the details step already asks to sign in).
+  if(!client || !mainAuthUser){ askState._error=t.signInToContinue; renderAsk(); return; }
+  let error = null;
+  if(mainCustomer?.id){
+    const result = await client.from('question_consultations').insert({customer_id:mainCustomer.id,customer_name:askState.name,birth_snapshot:{dob_ad:askState.dobAd,dob_bs:[askState.dobBsYear,askState.dobBsMonth,askState.dobBsDay],birth_time:askState.tob,birth_place:askState.pob,birth_country:askState.birthCountry},question_text:askState.question}).select('id,question_id').single();
+    error = result.error;
+    if(!error) askState.pendingRecordId = result.data.id;
   } else {
-    await window.JYOTISH_HELPERS?.safeStorageSet('ask_question_'+requestId, JSON.stringify(payload));
+    const result = await client.from('service_requests').insert({user_id:mainAuthUser.id,request_type:'question',payload,status:'new'});
+    error = result.error;
   }
+  if(error){ askState._error=error.message; renderAsk(); return; }
   askState.history.unshift({requestId,question:askState.question,status:'UNPAID',createdAt:new Date().toISOString()});
-  await askSaveHistory();
   askState.submitted = true;
   showToast(t.askSuccessTitle);
   renderAsk();
@@ -196,6 +201,3 @@ function resetAsk(){
   Object.assign(askState, { step:1, name:'',phone:'',email:'',dobBsYear:'',dobBsMonth:'',dobBsDay:'',dobAd:'',tob:'',pob:'',birthCountry:'', question:'', paymentAttested:false, termsAccepted:false, paymentRef:'', submitted:false, questionId:null, token:null, requestId:null, _error:null });
   renderAsk();
 }
-
-askLoadHistory();
-askLoadProfile();

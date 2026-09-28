@@ -27,59 +27,144 @@ Open http://localhost:3000. Use `npm run build` to create a production build and
 - Secure RLS policies for scoped access
 - Realtime messaging support for customer ↔ astrologer chat
 - Payment, consultation, booking, token, and availability tables prepared for future phases
-- Initial astrologer seed record for Krishna Prasad Pokharel, while keeping the system extensible for unlimited future astrologers
 - A working browser-based chat MVP that connects to Supabase Auth and Realtime
 
-## What I need to configure
+## Where the build is going
 
-Before running the app, set up the Supabase project and paste your values into the project configuration.
+`docs/IMPLEMENTATION-PLAN.md` is the ordered build plan for the marketplace
+(eSewa QR payments with manual Super Admin verification, ledger, manual payouts,
+audio/video consultations). `docs/ARCHITECTURE-DECISIONS.md` records why existing
+tables are extended rather than replaced. Work through the plan a step at a time.
 
 ## Project structure
 
-- `database/schema.sql` — complete relational schema and seed data
+- `database/schema.sql` — complete relational schema and seed data (from-scratch snapshot)
+- `database/migrations/` — numbered additive SQL applied on top of the snapshot
+- `docs/` — implementation plan and architecture decisions
 - `app/` — Next.js App Router shell and legacy site loader
-- `public/site-assets/` — browser runtime used by the migrated site
-- `.env.example` — Next.js environment variable template
+- `public/site-assets/` — the browser runtime; **this is the only frontend tree that is served**
+- `.env.example` — environment variable template
 - `README.md` — setup and deployment instructions
 
 ---
 
-## 1. Supabase project setup steps
+## 1. Developer setup — your own Supabase project
 
-1. Create a new Supabase project at https://supabase.com
-2. Open the SQL editor and run the SQL in `database/schema.sql`
-3. Create a storage bucket named `chat-attachments`
-4. Enable Realtime for the relevant tables (see schema comments)
-5. Enable Email/Password auth in Supabase Authentication
-6. Create the first astrologer user through Auth > Users, then map that user to the `astrologers` table using the provided SQL seed guide
-7. Fill the values in `public/site-assets/app-config.js` for the browser runtime, or migrate them to the Next.js environment variables in `.env.local`
-8. Run `npm run dev` and open `/chat`
+Every developer works against **their own free Supabase project**, never the shared or
+production one. Budget about 15 minutes.
 
----
+### 1.1 Prerequisites
 
-## 2. Required environment variables
+- Node.js **22 LTS or newer** (`node -v`). 20.9+ still runs the app, but Node 20 is past
+  end of life (April 2026)
+- A Supabase account (https://supabase.com, the free plan is enough)
 
-This is a browser project using Supabase anon key for front-end access. Keep your service role secret only on the server.
+### 1.2 Create the Supabase project
 
-For the browser runtime, add the following in `public/site-assets/app-config.js`:
+1. Dashboard → **New project**. Pick any name and region, and **save the database
+   password** — you need it in step 1.3.
+2. Leave **Enable Data API** on (the browser talks to the database through it).
+   "Enable automatic RLS" may be on or off; the schema enables RLS itself.
+3. **Authentication → Sign In / Providers → Email**: keep Email enabled. For local
+   development turn **Confirm email off** — Supabase's built-in mailer sends only a few
+   emails per hour, so sign-ups otherwise stall.
+4. **Authentication → URL Configuration**: set **Site URL** to `http://localhost:3000`.
 
-```js
-window.APP_CONFIG = {
-  supabaseUrl: 'https://YOUR_PROJECT_ID.supabase.co',
-  supabaseAnonKey: 'YOUR_ANON_KEY',
-  defaultAstrologerId: '00000000-0000-0000-0000-000000000000',
-};
-```
+Nothing else is configured by hand: tables, policies, storage buckets and realtime all
+come from the SQL in step 1.4.
 
-For server-side use in future backend APIs, use these environment variables:
+### 1.3 Create `.env`
 
 ```bash
-SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
-SUPABASE_ANON_KEY=YOUR_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
 ```
 
-> Never expose the service role key in the browser.
+Fill in, from your project:
+
+| Variable | Where to find it |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` | `https://<project-ref>.supabase.co` — shown under Project Settings → Data API, and in the **Connect** dialog (same value in both) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys → **Publishable** key (`sb_publishable_…`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → **Secret** key (`sb_secret_…`). Server only — never in a `NEXT_PUBLIC_` variable or under `public/` |
+| `SUPABASE_DB_URL` | **Connect** button (top of the dashboard) → **Session pooler** URI, port 5432, with your database password put in. URL-encode special characters in the password (`@` → `%40`, `#` → `%23`) |
+| `SUPABASE_DB_TARGET` | Leave `development` |
+| `NEXT_PUBLIC_DEFAULT_ASTROLOGER_ID` | Leave empty for now (step 1.6) |
+
+`.env` is git-ignored. Next.js reads it and passes only the `NEXT_PUBLIC_*` values to
+the browser (`app/layout.js`), so `public/site-assets/app-config.js` needs no editing.
+
+### 1.4 Build the database
+
+```bash
+npm install
+npm run db:setup      # schema.sql + every migration, in order
+npm run db:test       # every database test; each rolls back, so nothing is left behind
+npm run db:status     # 0001–0011 "pre-tracking", 0012 onward "applied"
+```
+
+`db:setup` prints `target: development (project <your-ref>)` first — check that it is
+**your** project. The scripts refuse to run unless `.env` says `development` and the
+database URL belongs to the same project as `SUPABASE_URL`. Every test must end in
+`all assertions passed`.
+
+### 1.5 Run the app and make yourself admin
+
+```bash
+npm run dev           # http://localhost:3000
+```
+
+1. On the site, open **My Account** and sign up with your email. This creates your
+   customer account.
+2. Make that account the super admin. In the Supabase **SQL editor** run:
+   ```sql
+   update public.users set role = 'super_admin' where email = 'you@example.com';
+   ```
+   Only the SQL editor, a migration or the server can do this; the database refuses role
+   changes from the browser. The change is recorded in `audit_log`.
+
+### 1.6 Create a practitioner (for chat and bookings)
+
+Nobody can approve their own practitioner application, so use a **second** account
+(a second browser profile or a private window):
+
+1. Sign up with another email → **My Account** → the Jyotish tab → submit the application.
+2. Signed in as the super admin, **My Account** → the applications tab → **Approve**.
+   The applicant becomes an active practitioner with the `jyotish` role.
+3. Optional: to make them the default practitioner in the app, copy their id from the
+   SQL editor into `NEXT_PUBLIC_DEFAULT_ASTROLOGER_ID` and restart `npm run dev`:
+   ```sql
+   select id, name from public.astrologers where status = 'active';
+   ```
+
+### 1.7 Everyday commands
+
+| Command | What it does |
+|---|---|
+| `npm run db:migrate` | Applies only the migrations this database does not have yet — run it after pulling |
+| `npm run db:test` | Runs every database test |
+| `npm run db:status` | Lists which migrations this database has |
+| `npm run test:server` | End-to-end check of the server API against a running app (`npm run dev` in another terminal; `API_BASE=http://localhost:3100` for another port). Covers `/api/me`, the chat endpoints and realtime delivery; creates and deletes throwaway users and chat files |
+| `npm run db:reset` | **Development only. Deletes all app data** and rebuilds from scratch. Logins survive but come back as plain customers — redo step 1.5 part 2 |
+
+To add a migration, read `database/migrations/README.md` first: new files are numbered,
+record themselves in `schema_migrations`, and come with a test in `database/tests/`.
+
+### 1.8 Troubleshooting
+
+| Message | Fix |
+|---|---|
+| `REFUSED: SUPABASE_DB_TARGET is "", expected "development"` | Add `SUPABASE_DB_TARGET=development` to `.env` |
+| `REFUSED: SUPABASE_DB_URL does not point at the project in SUPABASE_URL` | The two values come from different projects, or the DB URL is not a Supabase URI |
+| `password authentication failed` | Wrong database password in `SUPABASE_DB_URL`, or special characters not URL-encoded. Reset it under Project Settings → Database |
+| `getaddrinfo ENOTFOUND db.<ref>.supabase.co` | You used the direct connection (IPv6-only on the free plan). Use the **Session pooler** URI |
+| `REFUSED: this database is already set up` | `db:setup` is for an empty project; use `npm run db:migrate` |
+| Sign-up hangs on "check your email" | Turn off Confirm email (step 1.2), or confirm the user under Authentication → Users |
+
+## 2. Environment variables
+
+`.env.example` is the reference and says which values are browser-safe. The rule that
+matters: only `NEXT_PUBLIC_*` values ever reach the browser. The secret key, the database
+URL and any future API secrets stay server-side.
 
 ---
 
@@ -110,64 +195,49 @@ This schema includes:
 
 The design is structured so that more astrologers, multiple consultation types, assignments, billing, and future dashboards can be added without replacing the backend.
 
+**Services and prices** live in `services` (0013). Anyone can read the active ones;
+only an `admin` / `super_admin` changes them, and until the admin dashboard exists that is
+done in the SQL editor, for example
+`update public.services set price = 1200 where slug = 'live-call' and astrologer_id is null;`.
+A service goes `active` only when it has a mode, a price above zero and (for timed modes)
+a duration. Retire one with `status = 'archived'`; services are never deleted.
+
+**Bookings** (0014) are created only by the server (`POST /api/bookings`, signed-in
+customers) through `create_booking()`, which
+takes the time from the practitioner's weekly `availability` and the price from the
+service. Two bookings of one practitioner can never overlap (a database constraint).
+There is no UI for weekly hours yet; add them in the SQL editor, e.g.
+`insert into public.availability (astrologer_id, day_of_week, start_time, end_time) values ('<astrologer id>', 0, '09:00', '12:00');`
+(`day_of_week` 0 = Sunday). The site's booking form offers only practitioners with hours:
+without a row here, "Book" shows no free times. A booking stays `payment_pending` and
+lapses after `reservation_minutes` (20) until proof review lands (Step 8).
+
 ---
 
 ## 4. Authentication setup
 
-1. In Supabase Dashboard, go to Authentication > Providers
-2. Enable Email authentication
-3. Set allowed email domains if needed
-4. Use the front-end auth flow in `chat-app.js`
-5. A customer or astrologer is connected to the app through the `users` table and a role-specific record
-
-For a customer:
-
-```sql
-INSERT INTO public.customers (id, user_id, full_name, phone, status)
-VALUES ('<customer-user-id>', '<customer-user-id>', 'Customer Name', '98XXXXXXXX', 'active');
-```
-
-For an astrologer:
-
-```sql
-INSERT INTO public.astrologers (id, user_id, name, status, consultation_fee)
-VALUES ('<astrologer-user-id>', '<astrologer-user-id>', 'Krishna Prasad Pokharel', 'active', 600);
-```
+Email/password sign-in (section 1.2). Each Auth user gets a `public.users` row
+automatically (`handle_new_user`); signing in on the site creates their `customers` row.
+Practitioners apply from My Account and are approved by staff (section 1.6) — do not
+insert active `astrologers` rows by hand.
 
 ---
 
 ## 5. Storage setup
 
-Create a storage bucket named `chat-attachments`.
-
-Bucket policy recommendations:
-
-- Users can upload files only when they are participants in the conversation
-- Users can read files only if they belong to the same conversation
-- Only authenticated users can access the bucket
-- Avoid static public access
-
-The SQL schema includes helper logic and policies for attachments.
+Nothing to create by hand: `database/migrations/0011_storage_buckets.sql` creates the
+private `chat-attachments`, `vastu-files` and `jyotish-documents` buckets (10 MB,
+JPEG / PNG / PDF) and their policies. Chat files are uploaded by the server, not the
+browser; participants read them.
 
 ---
 
 ## 6. Realtime setup
 
-Enable Realtime in Supabase for the following tables:
-
-- `chat_messages`
-- `chat_conversations`
-- `chat_participants`
-
-Then run the SQL in `database/schema.sql` which includes:
-
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_conversations;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_participants;
-```
-
-The browser app uses `supabase.channel(...).on('postgres_changes', ...)` to receive live messages.
+Nothing to enable by hand: `schema.sql` adds `chat_messages`, `chat_conversations` and
+`chat_participants` to the `supabase_realtime` publication. The chat page subscribes with
+`supabase.channel(...).on('postgres_changes', ...)`; Realtime applies the same RLS as a
+query, so each user only receives rows they could read.
 
 ---
 
@@ -189,67 +259,43 @@ This is implemented with policies such as checking `auth.uid() = user_id` and co
 
 ## 8. How to create the first astrologer account
 
-1. Sign up a new user in Supabase Auth for the astrologer
-2. Copy that user ID
-3. Run SQL similar to:
-
-```sql
-INSERT INTO public.astrologers (
-  id,
-  user_id,
-  name,
-  photo_url,
-  biography,
-  qualification,
-  experience_years,
-  specialization,
-  languages,
-  consultation_fee,
-  status,
-  is_active
-)
-VALUES (
-  gen_random_uuid(),
-  '<AUTH_USER_ID>',
-  'Krishna Prasad Pokharel',
-  NULL,
-  'Astrologer and spiritual guidance specialist.',
-  'Jyotisha / Vastu / Numerology',
-  12,
-  'Vedic astrology, kundali analysis, vastu',
-  ARRAY['Nepali', 'Hindi', 'English'],
-  600,
-  'active',
-  true
-);
-```
-
-This keeps Krishna Prasad Pokharel as the first database astrologer without hard-coding the app around one person.
+Through the application flow in section 1.6: the practitioner applies from My Account,
+a different staff account approves. Approval sets the row `active` and promotes the user
+to the `jyotish` role; both steps are audited. The first production practitioner is
+created the same way.
 
 ---
 
 ## 9. How to test customer ↔ astrologer chat
 
-1. Create a customer auth user and a separate astrologer auth user
-2. Insert a matching record into `public.customers` and `public.astrologers`
-3. In the app, sign in as the customer and choose the astrologer
-4. Click Create Chat or Open Consultation
-5. Send a message from the customer device
-6. Sign in as the astrologer on a second device
-7. Open the same conversation and confirm the message appears in realtime
-8. Send a reply from the astrologer, then confirm delivery/read states
-9. Test file upload by attaching an image or PDF to a message
-10. Close the chat and verify no deletion occurs; history remains saved
+You need two accounts: a customer (any registered account) and an **active**
+practitioner (section 1.6). Use two browsers, or a normal and a private window.
+
+1. `npm run dev`, then open <http://localhost:3000/chat> in both windows and sign in,
+   one account in each. Registration is on the main site; the chat page only signs in.
+2. As the customer, pick the practitioner under **Available astrologers**. This opens
+   (or reuses) your conversation with them.
+3. The practitioner's window lists it under **Your conversations** and opens it.
+   Messages appear in the other window without reloading.
+4. **Attachment** sends a JPG, PNG or PDF (10 MB max). Clicking a file opens it through
+   a link that expires after 60 seconds; the files themselves are private.
+5. **Close Chat** (either side) ends the conversation for both: history stays, sending
+   is disabled. Choosing the practitioner again starts a new conversation.
+
+What each step is allowed to do is enforced by the database and `app/api/chat/*`, not by
+the page. `npm run test:server` (with the app running) checks all of it automatically,
+including live delivery and that a third account receives nothing.
 
 ---
 
 ## 10. How to deploy the project
 
-1. Commit the project to GitHub or your hosting repo
-2. Deploy the static frontend to Netlify, Vercel, or static hosting
-3. Configure the Supabase URL and anon key in the deployed app config
-4. Ensure your Supabase project has the SQL schema, auth, storage bucket, and realtime enabled
-5. Keep all sensitive keys on secure backend services only
+1. Deploy the Next.js app (e.g. Vercel) and set the same variables as `.env` in the
+   host's environment settings — `NEXT_PUBLIC_*` values plus the server-side secrets.
+2. The production database is migrated only on an explicit, approved decision: a
+   `.env` with `SUPABASE_DB_TARGET=production`, then
+   `node scripts/db.mjs database/migrations --production`. Without both, the runner refuses.
+3. Keep all sensitive keys on the server only.
 
 ---
 

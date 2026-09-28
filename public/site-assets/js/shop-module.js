@@ -97,11 +97,7 @@ async function submitOrder(){
   const seq = String(Math.floor(Math.random()*9000+1000));
   orderState.orderId = `JVS-ORD-${year}-${seq}`;
   orderState.submitted = true;
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.order) || 'order_';
-    await window.JYOTISH_HELPERS.safeStorageSet(key + orderState.orderId, JSON.stringify(orderState));
-  }
+  if (typeof saveAuthenticatedSubmission === 'function') await saveAuthenticatedSubmission('order', orderState);
   showToast(t.orderSuccessTitle);
   renderOrderPanel();
 }

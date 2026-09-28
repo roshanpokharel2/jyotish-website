@@ -148,10 +148,6 @@ async function saveVcPin(){
   document.getElementById('vcPinForm').style.display = 'none';
   redrawVcCanvas();
   renderVcPinsList();
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    await window.JYOTISH_HELPERS.safeStorageSet('vastu_annotation_pins', JSON.stringify(vcState.pins));
-  }
 }
 
 function deleteVcPin(i){
@@ -227,11 +223,6 @@ async function submitVastu(){
       const saved = await client.from('vastu_files').insert({project_id:vastuState.projectId,customer_id:mainCustomer.id,storage_path:path,file_name:file.name,mime_type:file.type,file_size:file.size});
       if(saved.error){ showToast(saved.error.message); return; }
     }
-  }
-  const storageOk = window.JYOTISH_HELPERS && window.JYOTISH_HELPERS.safeStorageSet;
-  if (storageOk) {
-    const key = (SITE_CONFIG.storageKeys && SITE_CONFIG.storageKeys.vastuPins) || 'vastu_request_';
-    await window.JYOTISH_HELPERS.safeStorageSet(key + record.ts, JSON.stringify(record));
   }
   renderVastuFreeInsight(record);
   showToast(t.toastVastu);

@@ -1,41 +1,99 @@
 /* ============================================================
    BOOKED SERVICES / ADMIN RECORDS
-   Groups locally stored submissions by person and supports export.
+   Submitted service requests and consultation bookings from the database, grouped by
+   person, with export.
+   RLS decides what is listed: staff see every request, anyone else only their own
+   (0002). Nothing is read from this browser's storage (Checkpoint K).
 ============================================================ */
 
 let bookingAdminRecords = [];
+let bookingAdminLoad = 0;
 
-const BOOKING_RECORD_TYPES = [
-  ['booking_', 'Consultation booking'],
-  ['chat_', 'Chat consultation'],
-  ['kundali_', 'Kundali request'],
-  ['order_', 'Shop order'],
-  ['enroll_', 'Class enrollment'],
-  ['contact_', 'Contact request']
-];
+const BOOKING_RECORD_TYPES = {
+  booking:'Consultation booking',
+  chat:'Chat consultation',
+  kundali:'Kundali request',
+  question:'Question',
+  order:'Shop order',
+  enrollment:'Class enrollment',
+  contact:'Contact request'
+};
 
-function getBookingAdminRecords(){
-  const records = [];
-  try {
-    for(let index=0; index<localStorage.length; index++){
-      const key = localStorage.key(index) || '';
-      const type = BOOKING_RECORD_TYPES.find(item=>key.startsWith(item[0]));
-      if(!type) continue;
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        records.push({ key, type:type[1], name:data.name || data.fullName || 'Unnamed visitor', data });
-      } catch(err) {
-        console.warn('Skipped unreadable booking record:', key, err);
-      }
-    }
-  } catch(err) {
-    console.warn('Booking records unavailable:', err);
-  }
-  return records.sort((first, second)=>String(second.key).localeCompare(String(first.key)));
+// System internals the customer never needs to see (duplicates and write
+// confirmations); the JSON download keeps everything.
+const RECORD_HIDDEN_KEYS = new Set(['productId', 'submitted']);
+const RECORD_LABEL_ALIASES = { qty:'Quantity' };
+const RECORD_LOCALES = { ne:'ne-NP', en:'en-GB', hi:'hi-IN', sa:'sa-IN' };
+const RECORD_STATUS = {
+  ne:{ new:'नयाँ', in_progress:'जारी', completed:'सम्पन्न', cancelled:'रद्द' },
+  en:{ new:'New', in_progress:'In progress', completed:'Completed', cancelled:'Cancelled' },
+  hi:{ new:'नया', in_progress:'जारी', completed:'पूर्ण', cancelled:'रद्द' },
+  sa:{ new:'नूतनम्', in_progress:'प्रचलत्', completed:'सम्पन्नम्', cancelled:'रद्दम्' }
+};
+
+// "orderId" -> "Order ID", "productName" -> "Product Name".
+function recordLabel(key){
+  if(RECORD_LABEL_ALIASES[key]) return RECORD_LABEL_ALIASES[key];
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\bId\b/g, 'ID').replace(/^./, c=>c.toUpperCase());
+}
+
+// "9/26/2026, 4:08:34 PM · new" -> locale date without seconds, translated status.
+function recordKey(created, status){
+  const lang = (typeof LANG !== 'undefined' && LANG) || 'ne';
+  const when = new Date(created).toLocaleString(RECORD_LOCALES[lang] || 'en-GB',
+    { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  const st = (RECORD_STATUS[lang] || RECORD_STATUS.en)[status] || status;
+  return `${when} · ${st}`;
+}
+
+async function getBookingAdminRecords(){
+  const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
+  if(!client || !mainAuthUser) return null;
+  const [requests, bookings] = await Promise.all([
+    client.from('service_requests')
+      .select('id, request_type, status, payload, created_at')
+      .order('created_at', { ascending:false })
+      .limit(500),
+    // Consultation bookings (Step 7). RLS: the customer's own, a practitioner's own, staff all.
+    client.from('bookings')
+      .select('id, status, scheduled_at, ends_at, consultation_mode, price_snapshot, currency, notes, subject, created_at, services(name)')
+      .order('created_at', { ascending:false })
+      .limit(500)
+  ]);
+  if(requests.error) console.warn('Booking records unavailable:', requests.error);
+  if(bookings.error) console.warn('Bookings unavailable:', bookings.error);
+  const lang = (typeof LANG !== 'undefined' && LANG) || 'ne';
+  const rtypes = (typeof T !== 'undefined' && T[lang] && T[lang].recordTypes) || {};
+  const records = (requests.data || []).map(row=>{
+    const payload = row.payload || {};
+    return {
+      created:row.created_at,
+      key:recordKey(row.created_at, row.status),
+      type:rtypes[row.request_type] || BOOKING_RECORD_TYPES[row.request_type] || row.request_type,
+      name:String(payload.name || payload.fullName || payload.profile?.name || 'Unnamed visitor'),
+      data:payload
+    };
+  }).concat((bookings.data || []).map(row=>({
+    created:row.created_at,
+    key:recordKey(row.scheduled_at, row.status),
+    type:row.services?.name || rtypes.booking || BOOKING_RECORD_TYPES.booking,
+    name:String(row.subject?.name || 'Unnamed visitor'),
+    data:{ reference:row.id.slice(0,8).toUpperCase(), status:row.status, startsAt:row.scheduled_at, endsAt:row.ends_at,
+      mode:row.consultation_mode, price:row.price_snapshot, currency:row.currency, notes:row.notes, subject:row.subject }
+  })));
+  return records.sort((a,b)=>String(b.created).localeCompare(String(a.created)));
 }
 
 function recordText(record){
-  return JSON.stringify(record.data, null, 2);
+  // The same payload as the JSON download, but as readable rows: scalars as
+  // key/value lines, nested objects (birth details) as compact inline JSON.
+  const data = record.data && typeof record.data === 'object' ? record.data : {};
+  const entries = Object.entries(data).filter(([key])=>!RECORD_HIDDEN_KEYS.has(key));
+  if(!entries.length) return '—';
+  return entries.map(([key, value])=>{
+    const shown = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—');
+    return `<div class="review-row"><span>${escapeHtml(recordLabel(key))}</span><b>${escapeHtml(shown)}</b></div>`;
+  }).join('');
 }
 
 function downloadJson(filename, value){
@@ -69,12 +127,23 @@ function groupBookingAdminRecords(){
   return [...groups.values()];
 }
 
-function renderBookingsAdmin(){
+async function renderBookingsAdmin(){
   const panel = document.getElementById('bookingsAdminGrid');
   if(!panel) return;
-  bookingAdminRecords = getBookingAdminRecords();
-  const groups = groupBookingAdminRecords();
+  const load = ++bookingAdminLoad;
+  const records = await getBookingAdminRecords();
+  if(load !== bookingAdminLoad) return; // a newer render (language, sign-in) won
   const t = T[LANG];
+  setText('bookingsRefreshEl', t.bookingsRefresh);
+  setText('bookingsExportEl', t.bookingsExportAll);
+  if(records === null){
+    bookingAdminRecords = [];
+    setText('bookingsCountEl', '');
+    panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.signInToContinue)}</p><button class="btn btn-gold" onclick="goView('account')">${t.authLoginTab}</button></div>`;
+    return;
+  }
+  bookingAdminRecords = records;
+  const groups = groupBookingAdminRecords();
   setText('bookingsCountEl', `${groups.length} ${t.bookingsPeopleLabel} · ${bookingAdminRecords.length} ${t.bookingsRecordsLabel}`);
   if(!groups.length){
     panel.innerHTML = `<div class="empty-box"><p>${t.bookingsEmpty}</p></div>`;
@@ -83,7 +152,7 @@ function renderBookingsAdmin(){
   panel.innerHTML = groups.map((group,index)=>`
     <details class="booking-record-folder" ${index===0?'open':''}>
       <summary><span><strong>${escapeHtml(group.name)}</strong><small>${group.records.length} ${t.bookingsRecordsLabel}</small></span><button type="button" class="btn btn-ghost record-download" onclick="event.preventDefault();downloadBookingPerson(${index})">${t.bookingsDownloadPerson}</button></summary>
-      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
+      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><div class="booking-record-detail">${recordText(record)}</div></details>`).join('')}</div>
     </details>`).join('');
 }
 

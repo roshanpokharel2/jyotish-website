@@ -1,0 +1,267 @@
+# Architecture Decisions
+
+Decisions taken when fitting the master architecture onto the existing schema.
+Recorded so nobody re-litigates them mid-build. Companion to `IMPLEMENTATION-PLAN.md`.
+
+---
+
+## AD-1 — `astrologers` stays the practitioner table; `consultants` is retired
+
+The schema has two practitioner tables with almost identical columns. `astrologers` is
+referenced by `bookings`, `consultations`, `payments`, `availability`, `chat_conversations`,
+`question_consultations`, and `tokens`. `consultants` is referenced by one nullable column
+on `astrologers` and by no frontend code.
+
+**Decision:** `astrologers` is the jyotish table. `consultants` is deprecated and dropped in a
+later cleanup migration once confirmed empty. Renaming `astrologers` → `jyotish` was rejected:
+it breaks seven foreign keys and every existing policy for a cosmetic gain.
+
+---
+
+## AD-2 — `bookings` and `consultations` are both kept, with distinct jobs
+
+The master architecture describes one "consultation" entity; the schema has two tables.
+Rather than merge them:
+
+- **`bookings`** — the commercial appointment. Who, which service, when, price snapshot,
+  commission snapshot, lifecycle status. Payments attach here.
+- **`consultations`** — the live session. Provider, room id, actual start/end.
+
+A booking may exist without a consultation (cancelled before joining). This matches the
+architecture's own split of video fields onto the session while payment attaches to the order.
+
+---
+
+## AD-3 — `services` is extended, not replaced
+
+The existing `services` table is a global catalog with no owner. The architecture needs
+per-practitioner services. Adding `astrologer_id`, `duration_minutes`, `consultation_mode`,
+`slug`, `currency` and `status` to it is a smaller change than a new `jyotish_services`
+table plus a data migration. `consultation_types` is kept as the taxonomy
+(ONLINE / DIRECT / QUESTION) that services reference.
+
+**As built (0013):** a null `astrologer_id` is a platform-wide service, bookable with any
+practitioner. Only admin / super_admin write services (AD-13); practitioners read their
+own. Services are archived, never deleted, because bookings will reference them.
+
+---
+
+## AD-4 — Consultation mode is a column, not three subsystems
+
+`audio`, `video` and `audio_video` share one booking flow, one join authorization path and
+one LiveKit room. The mode only changes which publish grants the minted token carries.
+It lives on the service and is **snapshotted onto the booking** so that editing a service
+later cannot retroactively change a sold booking.
+
+---
+
+## AD-5 — `payments` is altered, not rebuilt
+
+The current status set (`pending|verified|failed|refunded`) cannot express the manual-QR
+flow, which needs to distinguish "awaiting payment" from "customer submitted proof" from
+"admin is looking". The columns are widened and proof/review columns added. The table has
+no client INSERT or UPDATE policy today; that stays — only Edge Functions write payments.
+
+`astrologer_id` becomes nullable because money is paid to the platform, not the
+practitioner. What the practitioner is owed lives in `ledger_entries`, not on the payment.
+
+---
+
+## AD-6 — Manual verification and a future eSewa API converge on one state machine
+
+`provider`, `payment_method` and `verification_method` are separate columns from day one.
+Manual QR is `(esewa, manual_qr, manual)`; a future integration is `(esewa, api, webhook)`.
+Both paths end at `status = 'paid'`, and everything downstream — booking confirmation,
+ledger, payouts, notifications — reads only the status. Getting eSewa API access later
+means adding a webhook Edge Function, not reworking the marketplace.
+
+---
+
+## AD-7 — Four distinct money numbers
+
+`platform_gross`, `platform_commission`, `jyotish_payable` and `payout` are separate
+ledger entry types. "Payable" is what the platform owes; it is not "paid". Nothing is
+netted into a single balance column, because a single column cannot be audited.
+
+Ledger rows are append-only. Refunds and corrections are reversal rows carrying
+`reversal_of_entry_id`. Nothing financial is ever updated or deleted.
+
+---
+
+## AD-8 — Commission is snapshotted per booking
+
+`platform_settings.consultation_commission_percent` is the current rate. Each booking
+stores the rate that applied at purchase time, so changing the platform rate never
+rewrites historical earnings.
+
+---
+
+## AD-9 — One role helper, `security definer`
+
+Role checks were inlined as `exists (select 1 from public.users where id = auth.uid() and
+role = 'admin')` in roughly eight policies. Replaced by `public.has_role(variadic text[])`,
+`security definer` with a locked `search_path`, reading `public.users`. It must not read
+a JWT claim, because a claim is influenced by the client.
+
+---
+
+## AD-9b — Role value is `jyotish`, table stays `astrologers`
+
+`public.users.role` uses the architecture's vocabulary
+(`customer | jyotish | moderator | support | finance | admin | super_admin`), while the
+practitioner table keeps the name `astrologers` for the reasons in AD-1. The mismatch is
+deliberate: nothing in the frontend reads `users.role`, so migrating the value cost
+nothing, whereas renaming the table breaks seven foreign keys.
+
+## AD-9c — Column-level protection needs a trigger, not a policy
+
+RLS grants or denies a row, never a column. `users` must stay self-updatable (profile
+edits) while `role` must not be, so `trg_users_guard_role` rejects a role change unless
+the caller is an admin or has no JWT at all (service role / Edge Function / migration).
+The same pattern is reused for `astrologers.status` in Step 6 and for any other column a
+user owns the row of but must not set.
+
+**Amended by 0006:** account holders no longer own UPDATE on `users` at all (nothing on
+the row is theirs to edit). The trigger stays as the second layer and now also
+separates admins from super admins: only `super_admin` grants or removes `admin` /
+`super_admin`. `customer → jyotish` is allowed for whoever approves a practitioner,
+because it only passes once that practitioner's row is `active`, which only a reviewer
+can set. Side effects that depend on a guarded row's *new* state (the approval
+promotion) belong in an AFTER trigger; the BEFORE trigger cannot see the row as written.
+
+## AD-10 — `service_requests` is not the booking system
+
+The current browser booking flow writes generic `service_requests` rows. That stays as
+the intake channel for contact forms, kundali requests and similar, but real bookings go
+through `bookings` (the hold is the booking, AD-18) → `payments`. The two are not merged.
+Since 7d the booking form writes no `service_requests` row.
+
+---
+
+## AD-11 — Only `public/site-assets/` is the frontend
+
+`js/` is an unserved duplicate of `public/site-assets/js/`. It is deleted rather than kept
+in sync.
+
+The legacy files are classic scripts mounted by `app/legacy-runtime.js`. They run once per
+document; a second mount reloads the page (Checkpoint J). Third-party scripts are pinned
+to an exact version, never a floating tag.
+
+---
+
+## AD-12 — Postponed deliberately
+
+Not built, and not designed around, until explicitly revisited: embeddings, vector search,
+RAG, LLM integration, AI billing, AI revenue sharing, automatic consultation recording,
+automated payouts, split payments, direct customer-to-jyotish transfers.
+
+`knowledge_items` carries `author_id` from the start so attribution and revenue sharing
+remain possible later without a migration.
+
+---
+
+## AD-13 — Practitioners propose a price; they do not set it
+
+`astrologers.consultation_fee` is accepted from the applicant once, on the application,
+so the reviewer sees what they are asking. After that only a reviewer on someone else's
+row, or the service role, may change it (0007). The long-term source of truth for price
+is the per-practitioner `services` catalog from Step 7 (name, type, duration, price,
+currency, active state); `consultation_fee` is then a legacy display value. A
+practitioner may later *request* a price change, but the published price follows the
+platform's rules, never a direct self-edit.
+
+Related rule from the same migration: **nobody reviews their own practitioner row**,
+whatever their role. Approval is a separation-of-duties control, so a staff member who
+also practises needs a second reviewer.
+
+---
+
+## AD-14 — Chat authorization model
+
+- **RLS decides who sees and posts** (0010). Every chat policy goes through
+  `is_chat_participant(conversation)`: an active participant of *that* conversation.
+  RLS keeps protecting messages even if a client or the server layer is compromised.
+- **The browser only posts text.** File/system messages, attachment rows, conversation
+  creation, closing and read state are server operations (Next.js, Checkpoint I), which
+  validate first and then write with the service role.
+  Endpoints: `app/api/chat/conversations/**` (Checkpoint I). An uploaded file's type is
+  decided by its content, never its name or the browser's declared type.
+- **Messages are immutable.** No edit, no delete, no client-chosen timestamps.
+- **Files follow the same rule** (0011). `chat-attachments` is private and has no browser
+  upload policy; participants read `{conversation_id}/…`. No bucket lets the browser
+  overwrite, move or delete an object.
+- **Staff do not read chats** by default. Moderation access, if needed for disputes, is
+  a later, audited server operation — not a blanket RLS grant.
+
+**Temporary Phase 1 rule — revisit at Step 10.** Any signed-in customer may open a
+conversation with any *active* practitioner. Once bookings and payments exist,
+consultation chat will be tied to a booking/consultation relationship; the
+`booking_id` / `consultation_id` columns and the index that only limits *general*
+conversations are there for that. Do not let this rule become permanent by default.
+
+---
+
+## AD-15 — Migration history: our own table, real applications only
+
+`public.schema_migrations` (0012) is written by each migration itself, not by the
+runner, so the record and the change commit or roll back together and the SQL editor is
+covered too. It is not Supabase CLI's `supabase_migrations` schema — there is one
+migration system, `database/migrations` + `scripts/db.mjs`. History starts at 0012;
+0001–0011 are never back-filled, because a row claiming an application nobody observed
+is worse than no row.
+
+---
+
+## AD-16 — Server trust model (Checkpoint H)
+
+- **Identity** comes from the Supabase access token in `Authorization: Bearer`, checked
+  by Supabase Auth on every request. No cookies, so no CSRF surface.
+- **Authority** (role, account status) is read from the database per request, never
+  from token claims or the request body, so a role change or a block applies at once.
+- **The secret key lives only in `lib/server/`** (`server-only`), is read from the
+  environment, and is never logged or returned. The service role bypasses RLS, so every
+  route authorizes with `requireUser()` *before* touching the admin client.
+- **RLS stays the floor.** Server routes are for what the browser must not be trusted
+  to do (validation, cross-row checks, service-role writes); they do not replace policies.
+- **Errors**: caller-facing ones are explicit `HttpError`s; anything unexpected is a
+  generic 500 with the detail only in the server log.
+- **Rules that must hold under concurrency live in the database** (Checkpoint 7b/7c):
+  the booking route only validates shape and passes the caller's own customer id to
+  `create_booking()`, which decides and enforces the rest in one transaction. Its
+  refusals are raised as bare codes (`SLOT_UNAVAILABLE`, …) that the route maps to
+  HTTP errors.
+
+---
+
+## AD-17 — No customer data in browser storage (Checkpoint K)
+
+Personal data (names, contact details, birth details, questions, bookings, payment
+references) is kept in the database under RLS, never in `localStorage` /
+`sessionStorage`: browser storage has no access control between people sharing a
+device, no expiry, and cannot be deleted on the customer's behalf. The only browser
+storage is Supabase's sign-in session, removed at sign-out. A feature that needs to
+remember something about a customer needs an account and a database row. Harmless UI
+preferences (language, a collapsed panel) may still use `localStorage`.
+
+---
+
+## AD-18 — A slot hold is a booking, not a reservation row (Checkpoint 7b)
+
+The plan had `reservations` (the ten-minute hold) feeding `bookings`. Instead a booking
+is created at once as `payment_pending` with `hold_expires_at`. One table, one
+exclusion constraint against overlap, and no step that copies a reservation into a
+booking and could fail between the two. A constraint cannot compare with `now()`, so an
+expired hold keeps occupying the slot in the constraint until the next booking of that
+time marks it `expired`; the free-slot list ignores expired holds already. Payment
+(Step 8) must refuse to confirm a booking whose hold has expired.
+
+---
+
+## AD-19 — Other people's rows are read through a function, not a policy (Checkpoint 7e)
+
+RLS decides rows, never columns. When people need *part* of a row they do not own (a
+practitioner's public profile), there is no row policy for them. A `security definer`
+function returns exactly the public columns (`active_practitioners()`, 0017). A
+policy is for rows whose every column the reader may see: their own, or staff. A new
+private column is then private by default, and nothing has to be remembered to keep
+it so.
