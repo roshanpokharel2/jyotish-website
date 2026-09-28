@@ -1631,12 +1631,38 @@ function openServiceMenu(type){
 }
 
 function closeServiceMenu(){ document.getElementById('serviceMenuOverlay')?.classList.remove('open'); }
+function jumpToSection(targetId){
+  const id = targetId || '';
+  if(!id) return;
+  const tryScroll = (attempt) => {
+    const el = document.getElementById(id);
+    if(el){
+      const stickyOffset = 96;
+      const top = el.getBoundingClientRect().top + window.scrollY - stickyOffset;
+      window.scrollTo({ top, behavior: 'smooth' });
+      return;
+    }
+    if(attempt < 4){ setTimeout(()=>tryScroll(attempt + 1), 120); }
+  };
+  tryScroll(0);
+}
+
 function selectServiceMenu(type,target){
   closeServiceMenu();
+  const sectionIdMap = {
+    marriage: 'marriageMatchingSection',
+    dailyHoroscopeSection: 'dailyHoroscopeSection',
+    vastuProjectStart: 'vastuProjectStart',
+    vastuGrid: 'vastuGrid',
+    uploadTitle: 'uploadTitle',
+    kundali: 'view-kundali',
+    ask: 'view-booking'
+  };
   if(target==='kundali'){ goView('kundali'); return; }
   if(target==='ask'){ goToBookingWithType('ask'); return; }
   goView(type);
-  window.setTimeout(()=>document.getElementById(target)?.scrollIntoView({behavior:'smooth',block:'start'}),80);
+  const resolvedTarget = sectionIdMap[target] || target;
+  setTimeout(()=>jumpToSection(resolvedTarget), 80);
 }
 
 function setText(id, val){ const el=document.getElementById(id); if(el) el.textContent=val; }
@@ -1974,9 +2000,52 @@ function renderFaq(cat){
 /* ============================================================
    VIEW / LANG SWITCH
 ============================================================ */
+function scrollFormPanelToTop(){
+  const preferredByView = {
+    astrology: '#marriageMatchingSection',
+    vastu: '#uploadTitle',
+    classes: '#enrollPanelWrap',
+    shop: '#orderPanelWrap',
+    kundali: '#kundaliPanel',
+    booking: '#bookingPanel',
+    contact: '#contactForm'
+  };
+
+  const candidates = [
+    preferredByView[currentView],
+    '#marriageMatchingSection',
+    '#dailyHoroscopeSection',
+    '#uploadTitle',
+    '#enrollPanelWrap',
+    '#orderPanelWrap',
+    '#kundaliPanel',
+    '#kundaliChartPanel',
+    '#vastuProjectStart',
+    '#bookingPanel',
+    '#contactForm'
+  ].filter(Boolean);
+
+  const target = candidates.find(selector => {
+    const el = document.querySelector(selector);
+    if(!el) return false;
+    const inActiveView = !el.closest('.view') || el.closest('.view')?.classList.contains('active');
+    const visible = window.getComputedStyle(el).display !== 'none' && (el.offsetParent !== null || el.getClientRects().length > 0);
+    return inActiveView && visible;
+  });
+
+  const finalTarget = target ? document.querySelector(target) : null;
+  if(finalTarget){
+    finalTarget.scrollIntoView({behavior:'smooth', block:'start'});
+    return;
+  }
+
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
 function setVastuCat(catId){
   vastuActiveCat = catId;
   renderStatic();
+  setTimeout(scrollFormPanelToTop, 60);
 }
 
 function goView(view, anchor){
@@ -1995,6 +2064,27 @@ function goView(view, anchor){
   announce(activeView?.querySelector('h1')?.textContent || view);
   if(anchor){
     setTimeout(()=>{ const el=document.getElementById('anchor-'+anchor); if(el) el.scrollIntoView({behavior:'smooth'}); }, 60);
+    return;
+  }
+  setTimeout(scrollFormPanelToTop, 80);
+}
+
+function openQuickAction(type){
+  if(type === 'call'){
+    window.location.href = 'tel:+9779851001890';
+    return;
+  }
+  if(type === 'whatsapp'){
+    window.open('https://wa.me/9779851001890', '_blank', 'noopener');
+    return;
+  }
+  if(type === 'viber'){
+    window.location.href = 'viber://chat?number=%2B9779851001890';
+    return;
+  }
+  if(type === 'booking'){
+    goView('booking');
+    return;
   }
 }
 
@@ -2059,15 +2149,19 @@ function renderCtPicker(){
   const el = document.getElementById('ctPicker');
   if(!el) return;
   const cards = [
-    ['online', t.ctOnline, t.feeOnline, 'compass'],
-    ['chat', t.ctChat, t.feeChat, 'briefcase'],
-    ['ask', t.ctAsk, t.feeAsk, 'star']
+    ['online', t.ctOnline, t.feeOnline, 'compass', t.ctOnlineD || ''],
+    ['chat', t.ctChat, t.feeChat, 'briefcase', t.ctChatD || ''],
+    ['ask', t.ctAsk, t.feeAsk, 'star', t.ctAskD || '']
   ];
-  el.innerHTML = cards.map(([type,title,fee,icon])=>`
-    <div class="service-card" style="cursor:pointer;${consultType===type?'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;':''}" onclick="setConsultType('${type}')">
-      <div class="service-icon">${ICONS[icon]}</div>
-      <h4>${title}</h4><p style="margin:0;"><span class="price-pill">${fee}</span></p>
-    </div>`).join('');
+  el.innerHTML = cards.map(([type,title,fee,icon,desc])=>`
+    <button type="button" class="consult-type-card ${consultType===type ? 'selected' : ''}" onclick="setConsultType('${type}')">
+      <span class="consult-type-icon">${ICONS[icon]}</span>
+      <span class="consult-type-copy">
+        <strong>${title}</strong>
+        <small>${desc || ''}</small>
+      </span>
+      <span class="consult-type-price">${fee}</span>
+    </button>`).join('');
   setText('ctPickerTitleEl', t.ctPickerTitle);
 }
 
@@ -2228,13 +2322,20 @@ function renderDetailsFieldsHtml(flow, state, t, includeMessage){
 
 function renderPaymentStepHtmlFor(prefix, t, fee, state){
   const instr = t.payInstructions.replace('{fee}', `<b>${fee}</b>`);
-  return `<h3>${t.paymentTitle}</h3>
-    <div class="disclaimer-box">${instr}</div>
-    <label style="display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer;">
-      <input type="checkbox" ${state.paymentAttested?'checked':''} onchange="${prefix}_setAttested(this.checked)" style="width:auto;">
-      <span style="font-weight:600;">${t.payAttestLabel}</span>
-    </label>
-    <div class="field" style="margin-top:12px;"><label>${t.payRefLabel}</label><input value="${escapeHtml(state.paymentRef)}" oninput="${prefix}_setPaymentRef(this.value)"></div>`;
+  return `<div class="payment-step-wrap">
+      <div class="payment-header">
+        <h3>${t.paymentTitle}</h3>
+        <span class="payment-badge">${fee}</span>
+      </div>
+      <div class="disclaimer-box payment-box">${instr}</div>
+      <div class="payment-option-row">
+        <label class="payment-check">
+          <input type="checkbox" ${state.paymentAttested?'checked':''} onchange="${prefix}_setAttested(this.checked)">
+          <span>${t.payAttestLabel}</span>
+        </label>
+      </div>
+      <div class="field payment-field"><label>${t.payRefLabel}</label><input value="${escapeHtml(state.paymentRef)}" oninput="${prefix}_setPaymentRef(this.value)"></div>
+    </div>`;
 }
 
 function detailsValidationError(state){

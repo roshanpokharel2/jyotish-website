@@ -32,7 +32,7 @@ function openEnroll(courseIndex){
   enrollState.courseName = t.classesList[courseIndex] ? t.classesList[courseIndex][0] : '';
   enrollState.submitted = false;
   renderEnrollPanel();
-  document.getElementById('enrollPanelWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('enrollPanelWrap')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function renderEnrollPanel(){

@@ -59,6 +59,25 @@ function downloadAllBookings(){
   downloadJson('jyotish-booked-services.json', bookingAdminRecords.map(record=>({type:record.type, key:record.key, data:record.data})));
 }
 
+function removeBookingRecord(recordKey){
+  if(!recordKey) return;
+  try {
+    localStorage.removeItem(recordKey);
+  } catch (err) {
+    console.warn('Failed to permanently delete booking record:', recordKey, err);
+    return;
+  }
+  bookingAdminRecords = getBookingAdminRecords();
+  renderBookingsAdmin();
+}
+
+function confirmDeleteBookingRecord(recordKey){
+  if(!recordKey) return;
+  const confirmed = window.confirm('Delete this booking record permanently?');
+  if(!confirmed) return;
+  removeBookingRecord(recordKey);
+}
+
 function groupBookingAdminRecords(){
   const groups = new Map();
   bookingAdminRecords.forEach(record=>{
@@ -83,7 +102,7 @@ function renderBookingsAdmin(){
   panel.innerHTML = groups.map((group,index)=>`
     <details class="booking-record-folder" ${index===0?'open':''}>
       <summary><span><strong>${escapeHtml(group.name)}</strong><small>${group.records.length} ${t.bookingsRecordsLabel}</small></span><button type="button" class="btn btn-ghost record-download" onclick="event.preventDefault();downloadBookingPerson(${index})">${t.bookingsDownloadPerson}</button></summary>
-      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
+      <div class="booking-record-list">${group.records.map(record=>`<details class="booking-record-item"><summary><span>${escapeHtml(record.type)}</span><small>${escapeHtml(record.key)}</small></summary><div style="display:flex;justify-content:flex-end;margin:10px 0 8px;"><button type="button" class="btn btn-ghost" onclick="event.preventDefault();event.stopPropagation();confirmDeleteBookingRecord(${JSON.stringify(record.key)});">Delete</button></div><pre>${recordText(record).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`).join('')}</div>
     </details>`).join('');
 }
 

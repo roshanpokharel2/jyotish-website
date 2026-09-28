@@ -40,7 +40,7 @@ function openOrder(productId){
   orderState.carat = '';
   orderState.submitted = false;
   renderOrderPanel();
-  document.getElementById('orderPanelWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('orderPanelWrap')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function numOptions(min, max, sel){
