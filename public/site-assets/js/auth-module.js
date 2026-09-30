@@ -480,6 +480,13 @@ async function accToken(){
   return session?.access_token || null;
 }
 
+// A booking shows its consultation time; a question, its number and text.
+function payQueueWhat(row){
+  if(row.booking) return new Date(row.booking.startsAt).toLocaleString();
+  if(row.question) return `Q-${String(row.question.number).padStart(6,'0')} · ${row.question.text}`;
+  return '';
+}
+
 async function renderPaymentsQueue(body){
   const t = T[LANG].payReview;
   const token = await accToken();
@@ -500,8 +507,8 @@ async function renderPaymentsQueue(body){
     <div class="review-row" style="align-items:flex-start;gap:12px;">
       <span>
         <b>${escapeHtml(row.customer?.name || '—')} → ${escapeHtml(row.astrologer?.name || '—')}</b><br>
-        <small>${escapeHtml(row.service?.name || '')} · ${escapeHtml(row.amount)} ${escapeHtml(row.currency)}</small><br>
-        <small>${escapeHtml(new Date(row.booking.startsAt).toLocaleString())}${row.customerReference ? ` · ${escapeHtml(row.customerReference)}` : ''}</small><br>
+        <small>${escapeHtml(row.service?.name || (row.question ? T[LANG].ctAsk : ''))} · ${escapeHtml(row.amount)} ${escapeHtml(row.currency)}</small><br>
+        <small>${escapeHtml(payQueueWhat(row))}${row.customerReference ? ` · ${escapeHtml(row.customerReference)}` : ''}</small><br>
         <small><a href="${escapeHtml(row.proofUrl)}" target="_blank" rel="noopener">${escapeHtml(t.proof)}</a></small>
       </span>
       <span style="display:flex;gap:8px;flex-shrink:0;">
@@ -786,7 +793,7 @@ async function renderRefundsQueue(body){
       <span>
         <b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)} · ${escapeHtml(row.customer?.name || '—')}</b><br>
         <small>${escapeHtml(row.status)} · ${escapeHtml(row.reason || '')}</small><br>
-        <small>${row.booking ? escapeHtml(new Date(row.booking.startsAt).toLocaleString()) : ''}</small>
+        <small>${escapeHtml(payQueueWhat(row))}</small>
       </span>
       <span style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
         ${actions.map(([action, label]) => `<button class="btn ${action === 'approve' || action === 'complete' ? 'btn-gold' : 'btn-ghost'}" onclick="refundAction('${escapeHtml(row.id)}','${action}')">${escapeHtml(label)}</button>`).join('')}

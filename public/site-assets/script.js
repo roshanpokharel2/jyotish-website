@@ -254,7 +254,7 @@ ne: {
   modeRequired:"कृपया परामर्श मोड (अनलाइन वा प्रत्यक्ष) छनोट गर्नुहोस्।",
   stepDetails:"विवरण", stepPayment:"भुक्तानी", stepConfirmation:"पुष्टि",
   stepType:"प्रकार", stepAstro:"ज्योतिषी", stepMethod:"विधि", stepTerms:"सर्त",
-  askSteps:["विवरण","प्रश्न","भुक्तानी","पेश","उत्तर"],
+  askSteps:["विवरण","ज्योतिषी","प्रश्न","भुक्तानी","उत्तर"],
   feeOnline:"रु. 1,000", feeChat:"रु. 600", feeAsk:"रु. 100",
   birthCountryLabel:"जन्म देश",
   validationRequired:"कृपया सबै आवश्यक (*) विवरण भर्नुहोस्।",
@@ -330,6 +330,7 @@ ne: {
   authForgotLink:"पासवर्ड बिर्सनुभयो?", authSwitchToRegister:"खाता छैन? दर्ता गर्नुहोस्", authSwitchToLogin:"पहिले नै खाता छ? लगइन गर्नुहोस्",
   jyotishAdmin:{title:"ज्योतिषी आवेदनहरू",none:"जाँच गर्न बाँकी कुनै आवेदन छैन।",approve:"स्वीकृत गर्नुहोस्",reject:"अस्वीकृत गर्नुहोस्",reasonPrompt:"अस्वीकृतिको कारण लेख्नुहोस्:",applied:"आवेदन मिति",fee:"शुल्क",experience:"अनुभव",done:"अद्यावधिक भयो।"},
   payReview:{title:"भुक्तानी प्रमाणीकरण",none:"जाँच गर्न बाँकी कुनै भुक्तानी छैन।",approve:"स्वीकृत गर्नुहोस्",reject:"अस्वीकृत गर्नुहोस्",reasonPrompt:"अस्वीकृतिको कारण लेख्नुहोस्:",done:"अद्यावधिक भयो।",proof:"प्रमाण हेर्नुहोस्"},
+  aq:{saved:"प्रश्न सुरक्षित भयो। पठाउन भुक्तानी गर्नुहोस्।",waiting:"प्रमाण प्राप्त भयो। भुक्तानी रुजु भएपछि प्रश्न ज्योतिषीकहाँ पुग्नेछ।",tooManyUnpaid:"भुक्तानी बाँकी दुई प्रश्न पहिले नै छन्। कृपया पहिले तिनको भुक्तानी गर्नुहोस्।",failed:"प्रश्न पठाउन सकिएन। कृपया फेरि प्रयास गर्नुहोस्।",payNow:"भुक्तानी गर्नुहोस्",st:{UNPAID:"भुक्तानी बाँकी",PROOF:"प्रमाण जाँच हुँदै",PAID:"भुक्तानी भयो — जवाफ पर्खँदै","IN REVIEW":"जवाफ लेखिँदै",ANSWERED:"जवाफ आयो",CLOSED:"बन्द (भुक्तानी रुजु भएन)"},answer:"जवाफ",draft:"ड्राफ्ट सुरक्षित",submit:"जवाफ पठाउनुहोस्",required:"जवाफ लेख्नुहोस्।",saved2:"सुरक्षित भयो।",sent:"जवाफ पठाइयो।",panelEmpty:"तपाईंलाई तोकिएको भुक्तानी भएको प्रश्न छैन।",birth:"जन्म",question:"प्रश्न"},
   jyotish:{title:"ज्योतिषीको रूपमा आवेदन",intro:"आफ्नो विवरण पठाउनुहोस्। प्रशासकले जाँच गरी स्वीकृत गरेपछि मात्र तपाईं सेवा र बुकिङ लिन सक्नुहुनेछ।",submit:"आवेदन पठाउनुहोस्",statusLabel:"आवेदनको अवस्था",reason:"कारण",bio:"परिचय",qualification:"शैक्षिक योग्यता",experience:"अनुभव (वर्ष)",specialization:"विशेषज्ञता",languages:"भाषा (अल्पविरामले छुट्याउनुहोस्)",fee:"परामर्श शुल्क (रु.)",sent:"आवेदन पठाइयो। स्वीकृतिको प्रतीक्षा गर्नुहोस्।",status:{pending_review:"जाँच भइरहेको छ",active:"स्वीकृत",rejected:"अस्वीकृत",suspended:"निलम्बित",inactive:"निष्क्रिय"}},
   myAccTitle:"मेरो खाता", myAccSub:"तपाईंको बुकिङ, कुण्डली, रिपोर्ट र भुक्तानी एकै ठाउँमा।",
   signInToContinue:"कृपया पहिले लगइन गर्नुहोस्।", bookingsTitle:"बुकिङ रेकर्ड", bookingsSub:"बुकिङ गरेका व्यक्तिहरूका सेवा र सम्पूर्ण विवरण नामअनुसार।", bookingsPeopleLabel:"व्यक्ति", bookingsRecordsLabel:"रेकर्ड", bookingsEmpty:"अहिलेसम्म कुनै रेकर्ड भेटिएन।", bookingsRefresh:"रिफ्रेस", bookingsExportAll:"सबै डाउनलोड", bookingsDownloadPerson:"व्यक्तिको विवरण डाउनलोड",recordTypes:{booking:"परामर्श बुकिङ",chat:"च्याट परामर्श",kundali:"कुण्डली अनुरोध",question:"प्रश्न",order:"पसल अर्डर",enrollment:"कक्षा भर्ना",contact:"सम्पर्क अनुरोध"},
@@ -564,7 +565,7 @@ en: {
   modeRequired:"Please choose a consultation mode (Online or Direct).",
   stepDetails:"Details", stepPayment:"Payment", stepConfirmation:"Confirmation",
   stepType:"Type", stepAstro:"Astrologer", stepMethod:"Method", stepTerms:"Terms",
-  askSteps:["Details","Question","Payment","Submit","Answer"],
+  askSteps:["Details","Astrologer","Question","Payment","Answer"],
   feeOnline:"NPR 1,000", feeChat:"NPR 600", feeAsk:"NPR 100",
   birthCountryLabel:"Birth Country",
   validationRequired:"Please fill in all required (*) details.",
@@ -640,6 +641,7 @@ en: {
   authForgotLink:"Forgot password?", authSwitchToRegister:"No account? Register", authSwitchToLogin:"Already have an account? Login",
   jyotishAdmin:{title:"Jyotish Applications",none:"No applications are waiting for review.",approve:"Approve",reject:"Reject",reasonPrompt:"Reason for rejection:",applied:"Applied",fee:"Fee",experience:"Experience",done:"Updated."},
   payReview:{title:"Payment Verification",none:"No payments are waiting for review.",approve:"Approve",reject:"Reject",reasonPrompt:"Reason for rejection:",done:"Updated.",proof:"View proof"},
+  aq:{saved:"Your question is saved. Pay to send it to the astrologer.",waiting:"Proof received. Your question goes to the astrologer once staff verify the payment.",tooManyUnpaid:"You already have two questions awaiting payment. Please pay for those first.",failed:"Your question could not be sent. Please try again.",payNow:"Pay now",st:{UNPAID:"Awaiting payment",PROOF:"Proof under review",PAID:"Paid — awaiting answer","IN REVIEW":"Being answered",ANSWERED:"Answered",CLOSED:"Closed (payment not verified)"},answer:"Answer",draft:"Save draft",submit:"Submit answer",required:"Please write the answer.",saved2:"Draft saved.",sent:"Answer submitted.",panelEmpty:"No paid questions are assigned to you.",birth:"Birth",question:"Question"},
   jyotish:{title:"Apply as a Jyotish",intro:"Send your details. You can offer services and take bookings only after an administrator verifies and approves your application.",submit:"Submit application",statusLabel:"Application status",reason:"Reason",bio:"Biography",qualification:"Qualification",experience:"Experience (years)",specialization:"Specialization",languages:"Languages (comma separated)",fee:"Consultation fee (NPR)",sent:"Application submitted. Please wait for approval.",status:{pending_review:"Under review",active:"Approved",rejected:"Rejected",suspended:"Suspended",inactive:"Inactive"}},
   myAccTitle:"My Account", myAccSub:"Your bookings, Kundali, reports and payments in one place.",
   signInToContinue:"Please log in to continue.", bookingsTitle:"Booked Services", bookingsSub:"All submitted service records grouped by person.", bookingsPeopleLabel:"people", bookingsRecordsLabel:"records", bookingsEmpty:"No stored records found yet.", bookingsRefresh:"Refresh", bookingsExportAll:"Download all", bookingsDownloadPerson:"Download person data",recordTypes:{booking:"Consultation booking",chat:"Chat consultation",kundali:"Kundali request",question:"Question",order:"Shop order",enrollment:"Class enrollment",contact:"Contact request"},
@@ -874,7 +876,7 @@ hi: {
   modeRequired:"कृपया परामर्श मोड (ऑनलाइन या प्रत्यक्ष) चुनें।",
   stepDetails:"विवरण", stepPayment:"भुगतान", stepConfirmation:"पुष्टि",
   stepType:"प्रकार", stepAstro:"ज्योतिषी", stepMethod:"विधि", stepTerms:"शर्तें",
-  askSteps:["विवरण","प्रश्न","भुगतान","सबमिट","उत्तर"],
+  askSteps:["विवरण","ज्योतिषी","प्रश्न","भुगतान","उत्तर"],
   feeOnline:"रु. 1,000", feeChat:"रु. 600", feeAsk:"रु. 100",
   birthCountryLabel:"जन्म देश",
   validationRequired:"कृपया सभी आवश्यक (*) विवरण भरें।",
@@ -949,6 +951,10 @@ hi: {
   authForgotLink:"पासवर्ड भूल गए?", authSwitchToRegister:"खाता नहीं है? पंजीकरण करें", authSwitchToLogin:"पहले से खाता है? लॉगिन करें",
   jyotishAdmin:{title:"ज्योतिषी आवेदन",none:"समीक्षा के लिए कोई आवेदन नहीं है।",approve:"स्वीकृत करें",reject:"अस्वीकृत करें",reasonPrompt:"अस्वीकृति का कारण लिखें:",applied:"आवेदन तिथि",fee:"शुल्क",experience:"अनुभव",done:"अद्यतन हो गया।"},
   payReview:{title:"भुगतान सत्यापन",none:"समीक्षा के लिए कोई भुगतान नहीं है।",approve:"स्वीकृत करें",reject:"अस्वीकृत करें",reasonPrompt:"अस्वीकृति का कारण लिखें:",done:"अद्यतन हो गया।",proof:"प्रमाण देखें"},
+  askDashboardEyebrow:"प्रश्न परामर्श", askEditProfile:"जन्म विवरण संपादित करें", askBirthDetails:"जन्म विवरण", askTotalQuestions:"कुल प्रश्न", askAnswered:"उत्तर मिला", askPending:"लंबित", askHistoryTitle:"मेरे प्रश्न", askNoQuestions:"अभी तक कोई प्रश्न नहीं भेजा गया।", askFeeNote:"प्रति प्रश्न शुल्क: रु. 100",
+  askInstruction:"एक स्पष्ट प्रश्न लिखें।", askPlaceholder:"अपना प्रश्न यहां लिखें...", askPreviewTitle:"प्रश्न की पुष्टि", askYourQuestion:"आपका प्रश्न", consultationFee:"परामर्श शुल्क", askPaymentPreviewBtn:"भुगतान की ओर बढ़ें", askFollowupRule:"हर नए या अलग प्रश्न के लिए नया भुगतान आवश्यक है।",
+  questionRequired:"कृपया एक प्रश्न लिखें।", oneQuestionWarning:"एक भुगतान में केवल एक प्रश्न शामिल है। कृपया एक मुख्य प्रश्न लिखें।", questionRequestLabel:"अनुरोध संदर्भ", questionConsultationsTitle:"प्रश्न परामर्श",
+  aq:{saved:"प्रश्न सहेजा गया। भेजने के लिए भुगतान करें।",waiting:"प्रमाण प्राप्त हुआ। भुगतान सत्यापित होने पर प्रश्न ज्योतिषी तक पहुंचेगा।",tooManyUnpaid:"आपके दो प्रश्न पहले से भुगतान की प्रतीक्षा में हैं। कृपया पहले उनका भुगतान करें।",failed:"प्रश्न भेजा नहीं जा सका। कृपया फिर प्रयास करें।",payNow:"भुगतान करें",st:{UNPAID:"भुगतान बाकी",PROOF:"प्रमाण की जांच जारी",PAID:"भुगतान हुआ — उत्तर की प्रतीक्षा","IN REVIEW":"उत्तर लिखा जा रहा है",ANSWERED:"उत्तर मिला",CLOSED:"बंद (भुगतान सत्यापित नहीं)"},answer:"उत्तर",draft:"ड्राफ्ट सहेजें",submit:"उत्तर भेजें",required:"कृपया उत्तर लिखें।",saved2:"ड्राफ्ट सहेजा गया।",sent:"उत्तर भेजा गया।",panelEmpty:"आपको सौंपा गया कोई भुगतान किया प्रश्न नहीं है।",birth:"जन्म",question:"प्रश्न"},
   jyotish:{title:"ज्योतिषी के रूप में आवेदन",intro:"अपना विवरण भेजें। प्रशासक द्वारा जाँच और स्वीकृति के बाद ही आप सेवाएँ और बुकिंग ले सकेंगे।",submit:"आवेदन भेजें",statusLabel:"आवेदन की स्थिति",reason:"कारण",bio:"परिचय",qualification:"शैक्षिक योग्यता",experience:"अनुभव (वर्ष)",specialization:"विशेषज्ञता",languages:"भाषाएँ (अल्पविराम से अलग करें)",fee:"परामर्श शुल्क (रु.)",sent:"आवेदन भेजा गया। स्वीकृति की प्रतीक्षा करें।",status:{pending_review:"जाँच जारी है",active:"स्वीकृत",rejected:"अस्वीकृत",suspended:"निलंबित",inactive:"निष्क्रिय"}},
   myAccTitle:"मेरा खाता", myAccSub:"आपकी बुकिंग, कुंडली, रिपोर्ट एवं भुगतान एक ही स्थान पर।",
   signInToContinue:"कृपया पहले लॉगिन करें।", bookingsTitle:"बुकिंग रिकॉर्ड", bookingsSub:"सभी सेवा रिकॉर्ड व्यक्ति के नाम के अनुसार समूहित हैं।", bookingsPeopleLabel:"व्यक्ति", bookingsRecordsLabel:"रिकॉर्ड", bookingsEmpty:"अभी कोई रिकॉर्ड नहीं मिला।", bookingsRefresh:"रिफ्रेश", bookingsExportAll:"सभी डाउनलोड", bookingsDownloadPerson:"व्यक्ति का विवरण डाउनलोड",recordTypes:{booking:"परामर्श बुकिंग",chat:"चैट परामर्श",kundali:"कुंडली अनुरोध",question:"प्रश्न",order:"दुकान ऑर्डर",enrollment:"कक्षा नामांकन",contact:"संपर्क अनुरोध"},
@@ -1183,7 +1189,7 @@ sa: {
   modeRequired:"कृपया परामर्शविधिं (अन्तर्जालम् अथवा प्रत्यक्षम्) चिन्वन्तु।",
   stepDetails:"विवरणम्", stepPayment:"भुगतानम्", stepConfirmation:"पुष्टिः",
   stepType:"प्रकारः", stepAstro:"ज्योतिषी", stepMethod:"विधिः", stepTerms:"शर्ताः",
-  askSteps:["विवरणम्","प्रश्नः","भुगतानम्","प्रेषणम्","उत्तरम्"],
+  askSteps:["विवरणम्","ज्योतिषी","प्रश्नः","भुगतानम्","उत्तरम्"],
   feeOnline:"रु. 1,000", feeChat:"रु. 600", feeAsk:"रु. 100",
   birthCountryLabel:"जन्मदेशः",
   validationRequired:"कृपया सर्वाणि आवश्यकानि (*) विवरणानि पूरयन्तु।",
@@ -1258,6 +1264,10 @@ sa: {
   authForgotLink:"गुप्तशब्दं विस्मृतवान्?", authSwitchToRegister:"कक्षः नास्ति? नामाङ्कनं कुर्वन्तु", authSwitchToLogin:"पूर्वमेव कक्षः अस्ति? प्रविश्यताम्",
   jyotishAdmin:{title:"ज्योतिषिणाम् आवेदनानि",none:"परीक्षणार्थं किमपि आवेदनं नास्ति।",approve:"स्वीकरोतु",reject:"अस्वीकरोतु",reasonPrompt:"अस्वीकारस्य कारणं लिखतु:",applied:"आवेदनदिनाङ्कः",fee:"शुल्कम्",experience:"अनुभवः",done:"अद्यतनीकृतम्।"},
   payReview:{title:"भुगतान-प्रमाणीकरणम्",none:"परीक्षणार्थं किमपि भुगतानं नास्ति।",approve:"स्वीकरोतु",reject:"अस्वीकरोतु",reasonPrompt:"अस्वीकारस्य कारणं लिखतु:",done:"अद्यतनीकृतम्।",proof:"प्रमाणं पश्यतु"},
+  askDashboardEyebrow:"प्रश्नपरामर्शः", askEditProfile:"जन्मविवरणं सम्पादयतु", askBirthDetails:"जन्मविवरणम्", askTotalQuestions:"सर्वे प्रश्नाः", askAnswered:"उत्तरिताः", askPending:"अवशिष्टाः", askHistoryTitle:"मम प्रश्नाः", askNoQuestions:"अद्यावधि कोऽपि प्रश्नः न प्रेषितः।", askFeeNote:"प्रतिप्रश्नं शुल्कम्: रु. १००",
+  askInstruction:"एकं स्पष्टं प्रश्नं लिखतु।", askPlaceholder:"अत्र स्वप्रश्नं लिखतु...", askPreviewTitle:"प्रश्नपुष्टिः", askYourQuestion:"भवतः प्रश्नः", consultationFee:"परामर्शशुल्कम्", askPaymentPreviewBtn:"भुगतानं प्रति गच्छतु", askFollowupRule:"प्रत्येकस्य नूतनस्य भिन्नस्य वा प्रश्नस्य कृते नूतनं भुगतानम् आवश्यकम्।",
+  questionRequired:"कृपया एकं प्रश्नं लिखतु।", oneQuestionWarning:"एकस्मिन् भुगताने एक एव प्रश्नः अन्तर्भवति। कृपया एकं मुख्यं प्रश्नं लिखतु।", questionRequestLabel:"अनुरोधसन्दर्भः", questionConsultationsTitle:"प्रश्नपरामर्शाः",
+  aq:{saved:"प्रश्नः रक्षितः। प्रेषणाय भुगतानं करोतु।",waiting:"प्रमाणं प्राप्तम्। भुगतानपुष्ट्यनन्तरं प्रश्नः ज्योतिषिणं प्राप्स्यति।",tooManyUnpaid:"भवतः प्रश्नद्वयं पूर्वमेव भुगतानं प्रतीक्षते। कृपया प्रथमं तयोः भुगतानं करोतु।",failed:"प्रश्नः प्रेषयितुं न शक्तः। पुनः प्रयतताम्।",payNow:"भुगतानं करोतु",st:{UNPAID:"भुगतानं शेषम्",PROOF:"प्रमाणपरीक्षणम्",PAID:"भुगतानं जातम् — उत्तरं प्रतीक्ष्यते","IN REVIEW":"उत्तरं लिख्यते",ANSWERED:"उत्तरं प्राप्तम्",CLOSED:"पिहितम् (भुगतानं न पुष्टम्)"},answer:"उत्तरम्",draft:"प्रारूपं रक्षतु",submit:"उत्तरं प्रेषयतु",required:"कृपया उत्तरं लिखतु।",saved2:"प्रारूपं रक्षितम्।",sent:"उत्तरं प्रेषितम्।",panelEmpty:"भवते नियुक्तः सशुल्कः प्रश्नः नास्ति।",birth:"जन्म",question:"प्रश्नः"},
   jyotish:{title:"ज्योतिषीरूपेण आवेदनम्",intro:"स्वविवरणं प्रेषयतु। प्रशासकेन परीक्षिते स्वीकृते च सति एव सेवाः आरक्षणानि च स्वीकर्तुं शक्नोति।",submit:"आवेदनं प्रेषयतु",statusLabel:"आवेदनस्य स्थितिः",reason:"कारणम्",bio:"परिचयः",qualification:"शैक्षिकयोग्यता",experience:"अनुभवः (वर्षाणि)",specialization:"विशेषज्ञता",languages:"भाषाः (अल्पविरामेन पृथक्)",fee:"परामर्शशुल्कम् (रु.)",sent:"आवेदनं प्रेषितम्। स्वीकृतेः प्रतीक्षां करोतु।",status:{pending_review:"परीक्षणे वर्तते",active:"स्वीकृतम्",rejected:"अस्वीकृतम्",suspended:"निलम्बितम्",inactive:"निष्क्रियम्"}},
   myAccTitle:"मम कक्षः", myAccSub:"भवतः आरक्षणानि, कुण्डली, प्रतिवेदनानि, भुगतानानि च एकत्र स्थाने।",
   signInToContinue:"कृपया प्रथमं प्रविशतु।", bookingsTitle:"आरक्षण-लेखाः", bookingsSub:"व्यक्तिनामानुसारं सर्वेषां सेवाऽभिलेखानां समूहः।", bookingsPeopleLabel:"व्यक्तयः", bookingsRecordsLabel:"अभिलेखाः", bookingsEmpty:"अद्यापि कश्चित् अभिलेखः न प्राप्तः।", bookingsRefresh:"पुनः पश्यताम्", bookingsExportAll:"सर्वं डाउनलोड", bookingsDownloadPerson:"व्यक्तेः विवरणं डाउनलोड",recordTypes:{booking:"परामर्श-आरक्षणम्",chat:"संभाषण-परामर्शः",kundali:"कुण्डली-याचना",question:"प्रश्नः",order:"आपण-आदेशः",enrollment:"वर्ग-प्रवेशः",contact:"सम्पर्क-याचना"},
@@ -2252,6 +2262,95 @@ function renderPaymentStepHtmlFor(prefix, t, fee, state){
       <span style="font-weight:600;">${t.payAttestLabel}</span>
     </label>
     <div class="field" style="margin-top:12px;"><label>${t.payRefLabel}</label><input value="${escapeHtml(state.paymentRef)}" oninput="${prefix}_setPaymentRef(this.value)"></div>`;
+}
+
+/* ============================================================
+   PAYMENT PROOF PANEL (bookings and questions)
+   Collects the eSewa screenshot and posts it to /api/payments/:id/proof; staff
+   then verify it. The account details are public platform settings, read
+   straight from the database. Each flow registers how to re-render itself and
+   keeps its own upload state, since both panels can be on the page at once.
+============================================================ */
+
+const PAY_FLOWS = {};   // flow -> { render(), target() -> { paymentId, paymentStatus } }
+const payState = {};
+let paySettings = null;
+let paySettingsPending = false;
+
+function payOf(flow){ return payState[flow] || (payState[flow] = { uploading:false, file:null, fileName:null, reference:'', _error:null }); }
+function payReset(flow){ delete payState[flow]; }
+function payRender(flow){ PAY_FLOWS[flow]?.render(); }
+
+function payLoadSettings(flow){
+  if(paySettings || paySettingsPending) return;
+  paySettingsPending = true;
+  getMainSupabase().from('platform_settings').select('key,value').in('key', ['esewa_account_label','esewa_account_id','esewa_qr_path'])
+    .then(({data, error})=>{ if(!error && data) paySettings = Object.fromEntries(data.map(row=>[row.key, row.value])); })
+    .catch(()=>{})
+    .finally(()=>{ paySettingsPending = false; payRender(flow); });
+}
+
+// target = { paymentId, paymentStatus }, updated in place once the proof is in.
+function renderPayPanelHtml(flow, t, target, waitingText){
+  if(target.paymentStatus === 'proof_submitted'){
+    return `<div class="disclaimer-box" style="text-align:left;margin:14px 0;">${escapeHtml(waitingText)}</div>`;
+  }
+  if(!paySettings){
+    payLoadSettings(flow);
+    return paySettingsPending ? `<p style="color:var(--ink-soft);">${t.loadingText}</p>` : '';
+  }
+  const s = paySettings;
+  const p = payOf(flow);
+  // The QR setting is empty until the platform uploads one; when set, it is a
+  // hosted image URL (managed uploads arrive with the admin dashboard).
+  const qr = typeof s.esewa_qr_path === 'string' && /^https?:\/\//i.test(s.esewa_qr_path)
+    ? `<div style="margin:10px 0;"><img src="${escapeHtml(s.esewa_qr_path)}" alt="eSewa QR" style="max-width:220px;border-radius:8px;"></div>` : '';
+  return `<div style="text-align:left;margin:14px 0;padding:14px;border:1px solid var(--gold);border-radius:10px;">
+    <h4 style="margin:0 0 6px;">${escapeHtml(t.pay.title)}</h4>
+    <p style="font-size:.85rem;color:var(--ink-soft);margin:0 0 8px;">${escapeHtml(t.pay.note)}</p>
+    <div class="review-row"><span>${escapeHtml(s.esewa_account_label || t.pay.account)}</span><b>${escapeHtml(s.esewa_account_id || '')}</b></div>
+    ${qr}
+    <div class="field" style="margin-top:10px;"><label>${escapeHtml(t.pay.upload)}</label><input type="file" id="${flow}PayProofFile" accept="image/jpeg,image/png,application/pdf" onchange="payPickFile('${flow}',this)"></div>
+    ${p.fileName ? `<p style="font-size:.82rem;margin:6px 0 0;">${escapeHtml(p.fileName)}</p>` : ''}
+    <div class="field" style="margin-top:10px;"><label>${escapeHtml(t.pay.reference)}</label><input id="${flow}PayReference" value="${escapeHtml(p.reference)}" maxlength="120" oninput="payOf('${flow}').reference=this.value"></div>
+    ${p._error ? `<p style="color:var(--maroon);font-weight:600;font-size:.85rem;">${escapeHtml(p._error)}</p>` : ''}
+    <button class="btn btn-gold btn-block" style="margin-top:12px;" onclick="paySubmitProof('${flow}')" ${p.uploading?'disabled':''}>${p.uploading?t.loadingText:escapeHtml(t.pay.submit)}</button>
+  </div>`;
+}
+
+function payPickFile(flow, input){
+  const p = payOf(flow);
+  p.file = input.files?.[0] || null;
+  p.fileName = p.file?.name || null;
+  p._error = null;
+  payRender(flow);
+}
+
+async function paySubmitProof(flow){
+  const target = PAY_FLOWS[flow]?.target();
+  const t = T[LANG];
+  const p = payOf(flow);
+  if(!target?.paymentId || p.uploading) return;
+  if(!p.file){ p._error = t.validationRequired; payRender(flow); return; }
+  const session = (await getMainSupabase().auth.getSession()).data.session;
+  if(!session){ p._error = t.signInToContinue; payRender(flow); return; }
+  p.uploading = true; p._error = null; payRender(flow);
+  try{
+    const form = new FormData();
+    form.append('file', p.file);
+    if(p.reference.trim()) form.append('reference', p.reference.trim());
+    const response = await fetch(`/api/payments/${encodeURIComponent(target.paymentId)}/proof`, {
+      method:'POST', headers:{ Authorization:`Bearer ${session.access_token}` }, body:form
+    });
+    const body = await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error?.message || t.loadFailed);
+    target.paymentStatus = body.payment?.status || 'proof_submitted';
+    p.file = p.fileName = null; p.reference = '';
+  } catch(err){
+    p._error = err.message;
+  }
+  p.uploading = false;
+  payRender(flow);
 }
 
 function detailsValidationError(state){

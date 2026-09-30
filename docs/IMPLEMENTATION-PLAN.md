@@ -69,8 +69,8 @@ checks live in `database/tests/`.
 below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booking
 endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21 done
 in 0018–0033; each migration's header names its build checkpoint, and the plan step it
-covers is noted under that step below. Question service Q1–Q2 done (0034 and
-its routes, below). The project in `.env` is the **development**
+covers is noted under that step below. Question service done (Q1–Q3: 0034, its routes and
+the ask form, below). The project in `.env` is the **development**
 database; 0001–0034 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -963,7 +963,7 @@ inserts a question with its own answer) and passes on 0034. It covers:
 
 All tests 0002–0034 and `npm run test:server` pass.
 
-**Until Q3** the old ask form's direct insert, and the practitioner panel's
+**Until Q3** (now done) the old ask form's direct insert, and the practitioner panel's
 direct answer, were refused by RLS. That was intended: they were the holes.
 
 **Rollback** Fix forward. Restoring the dropped policies restores the holes.
@@ -1015,6 +1015,65 @@ The service-role key is not in `.next/static` or `public`.
 
 **Rollback** Revert the commit; the database stays on 0034 and the queues simply stop
 listing questions.
+
+---
+
+#### Checkpoint Q3 — the ask form uses the server ✅ (running against development)
+
+**What**
+- `ask-flow.js` rewritten. The steps are details → astrologer → question → preview and
+  terms → `POST /api/questions` → payment proof.
+  - The practitioner list comes from `active_practitioners()`. The price comes from the
+    `question` service; a practitioner's own row wins, as `create_question()` decides.
+  - Removed: the "I've paid" checkbox, the browser-made `ASK-…` id, the direct insert
+    and the `service_requests` fallback.
+  - History shows `Q-000123`, the status (awaiting payment, proof under review, paid,
+    being answered, answered, closed) and the answer once final. A question still
+    awaiting payment has **Pay now**, which reopens the proof panel.
+- The proof panel moved from `booking-flow.js` to `script.js` (`renderPayPanelHtml`,
+  `paySubmitProof`). Each flow registers its render function and target in `PAY_FLOWS`
+  and has its own upload state, since both panels can be on the page at once.
+  `renderPaymentStepHtmlFor` stays for the chat flow.
+- Practitioner panel (`bookings-admin.js`):
+  - lists only questions assigned to this practitioner, so their own questions as a
+    customer stay out;
+  - shows the new birth-details format;
+  - saves through `POST /api/questions/:id/answer`;
+  - makes an answered question read-only.
+- The staff payment and refund queues (`auth-module.js`) show a question's number and
+  text where a booking shows its time.
+- Fixed on the way: the dashboard replaced the details form the moment its last field
+  was typed, before anything was saved. It now requires the saved customer profile.
+- New `aq` strings in all 4 languages, and the step bar now reads Details, Astrologer,
+  Question, Payment, Answer.
+
+**Test** A headless Edge walk runs with throwaway practitioner, customer and finance
+users:
+1. The customer asks through the real form: the practitioner and price come from the
+   database, and the question is created through the route as UNPAID.
+2. The customer uploads a PNG proof, and the payment moves to `proof_submitted`.
+3. The staff queue shows the payment as a question, and finance approves it.
+4. The practitioner's panel shows the question and birth place; the practitioner
+   answers, and the database records ANSWERED, written through the route.
+5. The customer's history shows the answer.
+
+The walk also clicks the buttons a first pass skipped:
+- **Pay now** in the history, for a question saved without paying.
+- The staff queue's **Reject** button: it prompts for a reason, and the question closes as CLOSED / FAILED. It shows as "Closed (payment not verified)" with no Pay now, and as read-only in the practitioner's panel.
+- The practitioner's **Save draft** (IN REVIEW, still editable), then Submit.
+- The refund tab: **Record refund**, then Approve, Process and Complete. The queue row shows the question number and text, and the question ends REFUNDED.
+- The staff queue, practitioner panel and customer screens in ne / hi / sa, with no `undefined`.
+
+This found and fixed two bugs:
+- hi and sa had none of the 21 question-flow strings.
+- A history reload was ignored while an older read was still in flight, so a paid question kept showing Pay now. Superseded reads are now dropped.
+
+Nothing is stored in `localStorage` and there are no page errors. The same walk has 7
+failures on the pre-Q3 browser code. The booking walk (now including its proof
+upload), the chat walk and `npm run test:server` pass.
+
+**Rollback** Revert the commit. The old form's writes are refused by 0034, so the
+question service stops working until Q3 is restored.
 
 ---
 

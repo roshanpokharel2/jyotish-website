@@ -212,6 +212,17 @@ There is no UI for weekly hours yet; add them in the SQL editor, e.g.
 without a row here, "Book" shows no free times. A booking stays `payment_pending` and
 lapses after `reservation_minutes` (20) until proof review lands (Step 8).
 
+**Questions** (NPR 100, 0034) are created only by the server (`POST /api/questions`) through
+`create_question()`, which takes the practitioner the customer chose and the price of
+the `question` service. They are paid through the same proof upload and staff review as
+bookings. A practitioner sees a question only once it is paid, and writes the answer
+through the server (`POST /api/questions/:id/answer`, `answer_question()`). The site's ask form walks the customer through
+choosing a practitioner, asking, and uploading the eSewa proof; the practitioner
+answers in the Booked Services view. Questions from the old ask form have no
+practitioner and no payment. Customers may have paid for them outside the system, so
+staff should check them by hand:
+`select id, question_id, customer_name, question_text, created_at from public.question_consultations where payment_id is null and status = 'UNPAID';`
+
 ---
 
 ## 4. Authentication setup
