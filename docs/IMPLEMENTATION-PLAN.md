@@ -67,8 +67,11 @@ checks live in `database/tests/`.
 
 **Status:** Steps 1–6 done. Phase 1 security hardening done (Checkpoints A–K, see
 below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booking
-endpoint, 7d booking form, 7e practitioner directory). Next: Step 8, payments. The project in `.env` is the **development** database; 0001–0017 are applied
-there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21 done
+in 0018–0033; each migration's header names its build checkpoint, and the plan step it
+covers is noted under that step below. Question service Q1 done (0034,
+below). The project in `.env` is the **development**
+database; 0001–0034 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
 `SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
@@ -912,6 +915,61 @@ would have returned the rest, identity documents included, to any customer.
 
 ---
 
+### Question service (NPR 100) — through the server and the payment system
+
+The old ask form inserted `question_consultations` from the browser. The row stayed
+`UNPAID`, had no practitioner, and was never picked up. RLS let the customer write the
+answer and let the practitioner mark the row paid. The customer now picks the
+practitioner, and there is no answer deadline yet.
+
+#### Checkpoint Q1 — database — `0034_question_payments.sql` ✅ (applied to development)
+
+**What**
+- `create_question` (server only) takes the practitioner, the price from the `question`
+  service (a practitioner's own row wins) and the commission setting, and opens an
+  `awaiting_payment` payment. Refuses `CUSTOMER_NOT_ACTIVE`, `SELF_BOOKING`,
+  `SERVICE_NOT_BOOKABLE`, and `TOO_MANY_UNPAID` (2 awaiting payment).
+- A payment has exactly one source: `payments.booking_id` or
+  `payments.question_consultation_id` (AD-20).
+- Proof, approval, rejection and refunds handle both kinds:
+  - approval → question `PAID`, `paid_at`, three ledger rows (`booking_id` null), and
+    both people notified;
+  - rejection → `FAILED` / `CLOSED`;
+  - full refund → `REFUNDED`.
+  The reviewer and refund self-checks read the payment's own customer and
+  practitioner. A refund reverses the ledger with the original rows' links and
+  commission.
+- `answer_question` (server only): assigned practitioner only, draft → `IN REVIEW`,
+  final → `ANSWERED`, then locked; the final answer notifies the customer. The old
+  notification trigger is dropped (it would send twice).
+- RLS: the browser can no longer insert or update question rows. A practitioner sees a
+  question only once it is paid; the customer still reads their own.
+- Checks: question 1–2000 characters, answer ≤ 5000, birth snapshot a JSON object
+  ≤ 4 KB. The `Q-000123` number stays the existing identity column.
+- The 2 legacy `UNPAID` rows are untouched (README §3 has the query).
+
+**Test** `database/tests/0034_question_payments_test.sql` fails on 0033 (a customer
+inserts a question with its own answer) and passes on 0034. It covers:
+- server-set price and practitioner;
+- each refusal;
+- one source per payment;
+- self-review refused;
+- approval, ledger and notifications;
+- practitioner and rival visibility;
+- draft, final and locked answers;
+- rejection;
+- full refund and balance;
+- the legacy row unchanged.
+
+All tests 0002–0034 and `npm run test:server` pass.
+
+**Until Q3** the old ask form's direct insert, and the practitioner panel's
+direct answer, were refused by RLS. That was intended: they were the holes.
+
+**Rollback** Fix forward. Restoring the dropped policies restores the holes.
+
+---
+
 ### Step 8 — Availability and slot computation
 
 > **Done in Checkpoint 7b** (0014), except `availability_exceptions`.
@@ -999,6 +1057,9 @@ booking is unchanged.
 
 ### Step 11 — Payments: eSewa QR + proof upload
 
+> **Done in 0018–0019** (build Checkpoints 8a–8b): payment rules, the private
+> `payment-proofs` bucket, `POST /api/payments/:id/proof`.
+
 **What** ALTER the existing `payments` table (do not replace it):
 - Make `astrologer_id` nullable — money goes to the platform, not the practitioner.
 - Add `booking_id` link (exists), `provider` (`esewa`), `payment_method`
@@ -1029,6 +1090,9 @@ proof object from storage → denied.
 
 ### Step 12 — Super Admin verification queue
 
+> **Done in 0018 and 0021** (build Checkpoints 8a, 9b): `approve_payment` /
+> `reject_payment`, `app/api/payments/review-queue`.
+
 **What** Admin UI listing `payments` where `status in ('proof_submitted','under_review')`
 with signed proof URL, customer, jyotish, service, amount, reference, submitted time.
 Edge Functions `approve-payment` and `reject-payment`.
@@ -1055,6 +1119,8 @@ leave a paid payment with no ledger row. Idempotent on payment state.
 
 ### Step 13 — Financial ledger
 
+> **Done in 0020–0022 and 0027** (build Step 9 and its follow-ups).
+
 **What** `ledger_entries`: `id`, `booking_id`, `payment_id`, `astrologer_id`,
 `entry_type` (`platform_gross|platform_commission|jyotish_payable|payout|refund_reversal`),
 `amount`, `currency`, `direction` (`credit|debit`), `reversal_of_entry_id`,
@@ -1076,6 +1142,8 @@ to the jyotish, and amount actually paid are four distinct numbers.
 
 ### Step 14 — Refunds (manual)
 
+> **Done in 0023–0024 and 0032** (build Checkpoints 10a–10b, 16a follow-up).
+
 **What** `refunds`: `id`, `payment_id`, `amount`, `reason`, `status`
 (`requested|approved|processing|completed|rejected`), `refund_method`,
 `external_reference`, `proof_storage_path`, `processed_by`, `processed_at`, `notes`.
@@ -1093,6 +1161,8 @@ enforced by a constraint plus a check in the Edge Function.
 
 ### Step 15 — Jyotish payouts (manual)
 
+> **Done in 0025–0026** (build Checkpoints 11a–11b).
+
 **What** `payouts` with statuses `pending|approved|processing|paid|failed|cancelled`,
 `external_reference`, `processed_by`, `processed_at`. Jyotish requests a payout against
 their `payable` balance; admin records the real transfer; a `payout` ledger entry debits
@@ -1106,6 +1176,8 @@ the number the dashboard displayed.
 ---
 
 ### Step 16 — Notifications and email jobs
+
+> **Done in 0028** (build Checkpoint 12a) plus `app/api/email/drain`.
 
 **What** Reuse `notifications` (add `data jsonb`, rename semantics of `is_read` to
 `read_at` or keep both). Add `notification_preferences` and `email_jobs`
@@ -1122,6 +1194,8 @@ A `send-emails` Edge Function drains the queue, invoked by pg_cron.
 
 ### Step 17 — Reminders
 
+> **Done in 0029** (build Checkpoint 13a).
+
 **What** pg_cron job scheduling 24-hour and 1-hour reminders. A unique
 `(booking_id, reminder_kind)` key makes a double run a no-op.
 
@@ -1130,6 +1204,8 @@ A `send-emails` Edge Function drains the queue, invoked by pg_cron.
 ---
 
 ### Step 18 — Audio / video consultations
+
+> **Join rules done in 0033** (build Checkpoint 17a).
 
 **What** LiveKit. Edge Function `join-consultation`: authenticate → confirm the caller
 is the booking's customer or its jyotish → booking confirmed and payment paid → server
@@ -1148,6 +1224,8 @@ token is ever persisted. LiveKit API secret lives only in Edge Function secrets.
 ---
 
 ### Step 19 — Reviews
+
+> **Done in 0030** (build Checkpoint 14a).
 
 **What** `reviews` with `unique(booking_id)`, rating 1–5, `private_feedback`, `status`.
 Eligibility (customer owns the booking, booking completed, no existing review) enforced
@@ -1172,6 +1250,8 @@ Role-gated per section, with every mutation going through an Edge Function.
 ---
 
 ### Step 21 — Knowledge foundation (no AI)
+
+> **Done in 0031** (build Step 15).
 
 **What** `knowledge_items` per architecture §46 — `author_id`, `content_type`, `status`,
 `visibility`, `language`. Authoring and moderation only.

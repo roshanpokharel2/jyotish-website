@@ -265,3 +265,20 @@ function returns exactly the public columns (`active_practitioners()`, 0017). A
 policy is for rows whose every column the reader may see: their own, or staff. A new
 private column is then private by default, and nothing has to be remembered to keep
 it so.
+
+---
+
+## AD-20 — A payment has exactly one source (Checkpoint Q1)
+
+A payment pays for one booking **or** one question
+(`check num_nonnulls(booking_id, question_consultation_id) = 1`, 0034). The payment
+functions branch on the source for its own state change: the booking's hold and status,
+or the question's status. Everything shared reads the payment or the ledger, never a
+join through `bookings`:
+- the reviewer and refund self-checks use `payments.customer_id` / `astrologer_id`;
+- approval writes the ledger from the source's price and commission snapshots;
+- a refund reverses each original ledger row with that row's own links and commission.
+
+A third thing to sell (a course, a shop order) is then a new source column and a new
+branch, not a copy of the payment system.
+

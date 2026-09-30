@@ -41,6 +41,23 @@ self-record makes a duplicate fail — but it skips the runner's order checks.
 | `0015_booking_notes.sql` | 7 | `create_booking()` stores the customer's message (≤ 2000 characters) in the same insert. **Supersedes** `create_booking()` from 0014 |
 | `0016_booking_subject.sql` | 7 | `bookings.subject` (jsonb object ≤ 4 KB): birth details of the person the consultation is about, read by the practitioner through the booking; `create_booking()` stores it in the same insert. **Supersedes** `create_booking()` from 0015 |
 | `0017_practitioner_directory.sql` | 7 | Drops "authenticated users can read active astrologers" (leaked every column, identity documents included); `active_practitioners()` returns the public profile of active practitioners to signed-in users |
+| `0018_payment_rules.sql` | 11 | Payment rules: the server decides when a booking is paid (`submit_payment_proof`, `approve_payment`, `reject_payment`, status/amount guards) |
+| `0019_payment_proofs.sql` | 11 | Private `payment-proofs` bucket for the customer's payment screenshot |
+| `0020_ledger.sql` | 13 | Append-only `ledger_entries`; `jyotish_balances` view |
+| `0021_approval_ledger.sql` | 12–13 | Approving a payment writes its three ledger entries |
+| `0022_ledger_delete_links.sql` | 13 | Ledger links survive account deletion |
+| `0023_refunds.sql` | 14 | Recording manual refunds (request, approve, reject) |
+| `0024_refund_completion.sql` | 14 | Completing a refund writes reversal ledger entries |
+| `0025_payouts.sql` | 15 | Practitioner payouts, request side |
+| `0026_payout_paid.sql` | 15 | Paying out writes its ledger entry |
+| `0027_balances_fix.sql` | 13 | `jyotish_balances` sums per source before joining |
+| `0028_notify.sql` | 16 | `notify_user()` and the `email_jobs` queue; decisions enqueue, sending happens later |
+| `0029_reminders.sql` | 17 | Consultation reminders (24 h, 1 h), generation side |
+| `0030_reviews.sql` | 19 | Customer reviews, database side |
+| `0031_knowledge.sql` | 21 | Knowledge items and moderation, no AI |
+| `0032_refund_delete_links.sql` | 14 | Refund links survive account deletion |
+| `0033_consultation_join.sql` | 18 | Who may join a consultation, decided by the database |
+| `0034_question_payments.sql` | Q1 | Question service through the server: server-only `create_question()` / `answer_question()`; a payment has exactly one source (booking or question); proof, approval, rejection and refunds handle both; browser insert/update policies on `question_consultations` dropped, practitioners see paid questions only. **Supersedes** `payment_reviewer_ok()` (now takes the payment), `guard_payment_amount()`, `submit_payment_proof()`, `approve_payment()`, `reject_payment()`, `refund_actor_ok()`, `complete_refund()` |
 
 ## Function privileges — read this before adding a `security definer` function
 
