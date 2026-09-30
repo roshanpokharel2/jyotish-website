@@ -5,7 +5,7 @@ import { adminClient } from '@/lib/server/supabase';
 const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Refund not found.'],
   REFUND_ALREADY_PROCESSED: [409, 'already_processed', 'This refund has already been decided.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot decide a refund for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot decide a refund for a payment you are party to.'],
 };
 
 // POST /api/refunds/:id/approve

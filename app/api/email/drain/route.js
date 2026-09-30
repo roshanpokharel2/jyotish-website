@@ -17,8 +17,16 @@ async function render(admin, job) {
   switch (job.kind) {
     case 'payment_approved': {
       const { data: pay } = await admin.from('payments')
-        .select('amount, currency, bookings(scheduled_at)').eq('id', job.entity_id).maybeSingle();
+        .select('amount, currency, bookings(scheduled_at), question_consultations!payments_question_consultation_id_fkey(question_id)')
+        .eq('id', job.entity_id).maybeSingle();
       if (!pay) return null;
+      const question = pay.question_consultations;
+      if (question) {
+        return { email,
+          subject: 'Question payment verified',
+          body: `Your payment of ${pay.currency} ${pay.amount} was verified. Question Q-${String(question.question_id).padStart(6, '0')} has been sent to the astrologer.` };
+      }
+      if (!pay.bookings) return null;
       return { email,
         subject: 'Booking confirmed',
         body: `Your payment of ${pay.currency} ${pay.amount} was verified. See you on ${npt(pay.bookings.scheduled_at)} NPT.` };
@@ -29,7 +37,7 @@ async function render(admin, job) {
       if (!pay) return null;
       return { email,
         subject: 'Payment not verified',
-        body: `Your payment of ${pay.currency} ${pay.amount} could not be verified: ${pay.rejection_reason}. Please make a new booking or contact support.` };
+        body: `Your payment of ${pay.currency} ${pay.amount} could not be verified: ${pay.rejection_reason}. Please try again or contact support.` };
     }
     case 'refund_completed': {
       const { data: refund } = await admin.from('refunds')

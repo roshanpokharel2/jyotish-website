@@ -69,8 +69,8 @@ checks live in `database/tests/`.
 below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booking
 endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21 done
 in 0018–0033; each migration's header names its build checkpoint, and the plan step it
-covers is noted under that step below. Question service Q1 done (0034,
-below). The project in `.env` is the **development**
+covers is noted under that step below. Question service Q1–Q2 done (0034 and
+its routes, below). The project in `.env` is the **development**
 database; 0001–0034 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
@@ -967,6 +967,54 @@ All tests 0002–0034 and `npm run test:server` pass.
 direct answer, were refused by RLS. That was intended: they were the holes.
 
 **Rollback** Fix forward. Restoring the dropped policies restores the holes.
+
+---
+
+#### Checkpoint Q2 — question endpoints ✅ (running against development)
+
+**What**
+- `POST /api/questions` `{astrologerId, question, subject}`: a signed-in customer asks
+  the chosen practitioner. The question must be 1–2000 characters and the birth details
+  are required. They are checked by `readSubject`, now shared with bookings in
+  `lib/server/subject.js`. Returns the question with its database-set price and
+  `paymentId`. Price, status, owner or answer sent by the browser are ignored.
+  Refusals map to 400 `self`, 403 `account_inactive`, 404 and 409 `too_many_unpaid`.
+- `POST /api/questions/:id/answer` `{answer, final}`: the assigned practitioner saves a
+  draft or the final answer. Anyone else gets 404, the same as a missing id. A closed,
+  unpaid or already-answered question gets 409 `closed`.
+- The payment proof, approve and reject routes serve question payments unchanged. The
+  review queue and the refund queue now include question payments, with `kind`
+  (`booking` | `question`) and a `question` block `{id, number, text, status}`. For a
+  question, `booking` is null.
+- The email sender's `payment_approved` has a question wording ("Question Q-000123 has
+  been sent to the astrologer") instead of reading a booking time that does not exist.
+- Self-review refusal messages now say "a payment you are party to", not "your own
+  booking".
+
+**Test** `npm run test:server` has a questions section (32 checks, 267 total). All 32
+fail against a build without these routes and pass with them. It covers:
+- 401 without a token;
+- 400 for bad input, including missing or impossible birth details;
+- a blocked customer, the practitioner asking themselves, and an unknown practitioner;
+- forged price, status, owner and answer ignored;
+- the direct browser insert refused;
+- the third unpaid question refused;
+- proof upload by the owner only;
+- both queues showing `kind: 'question'`;
+- a moderator unable to approve;
+- approve → `PAID`, reject → `CLOSED`;
+- the practitioner seeing the question only once paid, and a rival never;
+- the browser unable to write the answer;
+- a rival practitioner and the customer refused 404;
+- draft, then final, then locked;
+- the customer reading the answer and notified twice;
+- refund → `REFUNDED`;
+- the approval email attempted.
+
+The service-role key is not in `.next/static` or `public`.
+
+**Rollback** Revert the commit; the database stays on 0034 and the queues simply stop
+listing questions.
 
 ---
 

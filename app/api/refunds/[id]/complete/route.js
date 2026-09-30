@@ -6,7 +6,7 @@ const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Refund not found.'],
   REFUND_ALREADY_PROCESSED: [409, 'already_processed', 'This refund is already finished.'],
   LEDGER_MISMATCH: [409, 'ledger_mismatch', 'This payment has no complete ledger record to reverse.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot complete a refund for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot complete a refund for a payment you are party to.'],
 };
 
 // POST /api/refunds/:id/complete   { externalReference, proofPath?, notes? }

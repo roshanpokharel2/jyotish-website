@@ -9,7 +9,7 @@ const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Payment not found.'],
   REFUND_NOT_ALLOWED: [409, 'not_refundable', 'Only paid payments can be refunded.'],
   REFUND_TOO_LARGE: [409, 'too_large', 'Open refunds already cover this payment.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot record a refund for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot record a refund for a payment you are party to.'],
 };
 
 // POST /api/refunds   { paymentId, amount, reason }

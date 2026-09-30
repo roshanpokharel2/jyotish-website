@@ -5,7 +5,7 @@ import { adminClient } from '@/lib/server/supabase';
 const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Refund not found.'],
   REFUND_ALREADY_PROCESSED: [409, 'already_processed', 'This refund is not awaiting transfer.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot process a refund for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot process a refund for a payment you are party to.'],
 };
 
 // POST /api/refunds/:id/process   (approved -> processing: the transfer is in flight)
