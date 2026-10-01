@@ -72,8 +72,12 @@ in 0018–0033; each migration's header names its build checkpoint, and the plan
 covers is noted under that step below. Question service done (Q1–Q3: 0034, its routes and
 the ask form, below). Step 8 done, with days off
 (E1–E2: 0035 and the practitioner's Days off box, below). Weekly hours editor done
-(H1–H2: 0036 and the practitioner's Weekly hours box, below). The project in `.env` is the **development**
-database; 0001–0036 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+(H1–H2: 0036 and the practitioner's Weekly hours box, below). Step 20 done
+(A1–A4: the staff dashboard; customers and practitioners, 0037; services and
+settings, 0038; bookings and reviews, 0039; below). Booking completion done
+(C1–C2: 0040 and the Completed / No-show buttons, under Step 10). P1 fixes done (under
+Step 20). The project in `.env` is the **development**
+database; 0001–0040 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
 `SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
@@ -1274,6 +1278,50 @@ booking is unchanged.
 **Security** Price and commission snapshots are written by the Edge Function from
 `services.price` and `platform_settings`, never from the request body.
 
+#### Booking completion (C1–C2)
+
+Nothing moved a booking past `confirmed`, so a paid consultation stayed confirmed
+forever and a customer could never review it (0030 requires `completed`). Decided: the
+practitioner marks the outcome after the end, anything still open 24 hours later
+completes itself, and staff can correct it.
+
+> **C1 done** — `0040_booking_completion.sql` ✅ (applied to development).
+> - `complete_booking(booking, actor, outcome)` (service role): `completed` or
+>   `no_show`, by the booking's own practitioner or support/admin/super_admin; the
+>   booking must be confirmed / in_progress, paid, and ended. Staff may switch a
+>   finished booking between the two outcomes. Anyone else -- the customer included --
+>   gets `NOT_FOUND`. Audited as `booking.completed` / `booking.no_show`.
+> - `auto_complete_bookings()` (service role): paid bookings still confirmed /
+>   in_progress 24 hours after their end become completed, audited with no actor and
+>   the reason; a second run changes nothing.
+> - Money is untouched: the ledger is written at approval (0021).
+> - Test `0040_booking_completion_test.sql` fails without the functions and covers the
+>   customer, another practitioner and finance refused, a bad outcome, not ended, not
+>   paid, no review before completion and one after, the practitioner unable to re-mark,
+>   the staff correction, auto-completion (only the stale paid booking, audited, once),
+>   and browsers unable to call either function.
+
+> **C2 done** — no migration.
+> - `POST /api/bookings/:id/complete {outcome}`: any signed-in user; `complete_booking()`
+>   decides. 404 for anyone who is not the practitioner or support/admin/super_admin
+>   (the customer and finance included), 400 for a bad outcome, 409 `not_ended`,
+>   `not_completable`, `already_finished`.
+> - `POST /api/reminders/run` also runs `auto_complete_bookings()` and returns
+>   `{generated, completed}`; no new scheduler.
+> - My Account → requests: on the practitioner's own paid booking that has ended,
+>   **Completed** / **No-show**; their own bookings no longer offer "Rate". The customer
+>   gets "Rate" once it is completed.
+> - Staff dashboard → Bookings: support/admin/super_admin get the same buttons on an
+>   ended paid booking, and the other outcome on a finished one (correction). Finance
+>   stays read only. Strings in ne / en / hi / sa.
+> - Tests: `test-server` -- no token 401, bad outcome 400, not ended 409, customer /
+>   finance / bad id 404, the practitioner completes and cannot re-mark, support
+>   corrects to no-show and back, three audit rows with their actors, the scheduler run
+>   reports `completed`. Walk `complete_ui.mjs`: the practitioner sees the buttons (en,
+>   ne) and completes; the customer rates it; a moderator sees the review in the
+>   dashboard; finance sees no buttons; support marks no-show and corrects it. The walk
+>   fails with the buttons removed.
+
 ---
 
 ### Step 11 — Payments: eSewa QR + proof upload
@@ -1468,7 +1516,124 @@ Role-gated per section, with every mutation going through an Edge Function.
 
 **Depends on** Steps 6, 12, 14, 15, 19.
 
+**How it is built** A view on the one site page (`view-admin`, `js/admin-module.js`),
+not a separate `/admin` route, so it shares the site's sign-in and scripts. Staff writes
+go through RLS + guards where the database already decides, and through a Next.js route
+where only the service role may write (AD-21); there are no Edge Functions.
+
+> **A1 done** (no migration). The dashboard shell and the staff queues:
+> - Sections follow the role: everyone on staff sees Overview and Jyotish applications;
+>   finance/admin/super_admin also see Payments, Refunds, Payouts and Audit;
+>   moderator/admin/super_admin see Knowledge moderation. The lists are presentation;
+>   every route and policy enforces them.
+> - `GET /api/admin/overview` returns counts only, and only those the caller's role may
+>   open: pending applications, today's bookings and questions awaiting an answer for
+>   all staff; proofs, open refunds and open payouts for money roles; knowledge awaiting
+>   review for moderation roles. A count card opens its queue.
+> - The queues moved out of My Account unchanged. My Account keeps the personal tabs
+>   (profile, requests, Jyotish, knowledge authoring) and gives staff a "Staff dashboard"
+>   button.
+> - Fixed while moving: the knowledge queue sent `publish`/`reject`, which the moderate
+>   route refuses (`published`/`rejected`), so publishing from the browser never worked;
+>   and it showed `content_type`, which the queue route returns as `contentType`.
+> - Tests: `test-server` overview section (401, customer and practitioner 403, each
+>   staff role gets exactly its counts); a headless walk per role (signed out, customer,
+>   support, moderator, finance, admin: sections, counts against the database, approve
+>   an application, publish knowledge, audit, ne/hi/sa). The walk fails on the code
+>   before A1.
+
+> **A2 done** — `0037_customer_status.sql` ✅ (applied to development).
+> - **Customers** (support, admin, super_admin): `GET /api/admin/customers?q=` searches
+>   by name or email (the account's or the profile's), newest 50, and returns only
+>   name, email, phone, status and role. Staff have no RLS read on `customers`; birth
+>   details stay private.
+> - **Block / unblock**: `POST /api/admin/customers/:id/status {status, reason}` calls
+>   `set_customer_status()` (service role only). It requires support/admin/super_admin
+>   and a reason (≤ 500), and refuses the caller's own row, a staff account's row and
+>   a no-op. The 0008 trigger is still the one place the change is audited; it now
+>   takes the actor and reason from transaction-local settings the function sets, so
+>   the audit row names who blocked and why (before 0037 it had no actor). A blocked
+>   customer gets 403 `account_inactive` from every route (`requireUser`).
+> - **Role change** (admin, super_admin): an RLS update on `users`; the 0006 guard
+>   decides and its message is shown (only a super_admin grants or removes admin roles).
+> - **Practitioners** (moderator, admin, super_admin): active, suspended and inactive
+>   practitioners; suspend (asks a reason, kept in the audit row) and reactivate are the
+>   guarded RLS update the applications queue uses. A suspended practitioner leaves the
+>   directory and offers no slots.
+> - Tests: `0037_customer_status_test.sql` fails on 0036 (no function) and checks the
+>   audit row's actor and reason, every refusal, that the settings don't outlive the
+>   call, and that browsers can neither call it nor change status. `test-server`:
+>   list 403 for customer and moderator, search, block/unblock, 400/403/404/409 cases,
+>   the blocked account refused. The dashboard walk adds: support blocks (reason
+>   prompt; cancelling changes nothing) and unblocks, no buttons on their own row; an
+>   admin changes a role and granting admin is refused; a moderator suspends (gone from
+>   the directory, audited) and reactivates. It fails with the new sections hidden.
+
+> **A3 done** — `0038_admin_guards.sql` ✅ (applied to development).
+> - **Settings guard** (`guard_platform_setting()`, every caller): commission 0–100;
+>   `reservation_minutes` whole 1–1440; join windows and `cancellation_window_hours`
+>   whole 0–1440; `minimum_payout` ≥ 0; `default_currency` `"NPR"` only (the money
+>   tables accept nothing else); eSewa label and ID text of 1–200; `esewa_qr_path` empty
+>   or an http(s) address ≤ 500. Browser callers also may not add, delete, rename or
+>   change `is_public` of a setting -- "admins can manage settings" is `for all`, so an
+>   admin could delete the commission row before 0038.
+> - **Audit**: `setting.updated` (old and new value, key in `metadata`);
+>   `service.created` / `service.updated` with name, mode, duration, price and status,
+>   only when one of them changes. Bookings keep their `price_snapshot`.
+> - **Services** (admin, super_admin): every service, edit price, minutes and status;
+>   the 0013 checks refuse an incomplete active service and the message is shown.
+>   Not built: adding a service. It needs a `consultation_types` row, which nothing can
+>   read from the browser; add services by migration until a new kind is needed.
+> - **Settings** (admin, super_admin): each key with its description, an edit field and
+>   Save; a number setting is sent as a number when it reads as one, otherwise as typed,
+>   and the guard's message is shown.
+> - Tests: `0038_admin_guards_test.sql` fails on 0037 (an admin's commission of "abc"
+>   is accepted); covers 13 bad values, good values and their audit row, add / delete /
+>   rename / `is_public` refused, a moderator writes nothing, the service audit (one row;
+>   a description-only edit writes none), an earlier booking's price, and the service
+>   role held to the value rules. The dashboard walk adds: an admin changes the live-call
+>   price (the booking form's query returns it, audited), price 0 on an active service
+>   and a commission of "abc" are refused with the database's message, a good setting
+>   saves and is audited, and the audit section lists both. It restores the price and
+>   settings, and fails with the new sections hidden.
+
+> **A4 done** — `0039_review_guard.sql` ✅ (applied to development). Step 20 complete.
+> - **Bookings** (support, finance, admin, super_admin), read only:
+>   `GET /api/admin/bookings?status=&from=&to=` (Kathmandu days, `to` inclusive; newest
+>   100). The server joins customer name and email, practitioner and the latest payment
+>   status, because support has no RLS read on customers or payments. Cancelling or
+>   moving a booking stays out; refunds cover money.
+> - **Reviews** (moderator, admin, super_admin): stars, practitioner, private feedback
+>   and status; hide / publish through the RLS update. Hidden reviews leave
+>   `public_reviews` and `practitioner_ratings`.
+> - **Fixed (0039):** "review staff can hide reviews" is a row-level UPDATE, so a
+>   moderator could rewrite a review's rating, feedback or practitioner and move the
+>   public average. `guard_review_update()` lets a JWT caller change only `status`, and
+>   audits every change as `review.status_changed`.
+> - Tests: `0039_review_guard_test.sql` fails on 0038 (a moderator's rating change is
+>   accepted); covers rating / feedback / practitioner refused, hide and publish audited
+>   with the moderator, the customer unable to touch it. `0038_admin_guards_test.sql`
+>   now counts only its own audit rows (the A3 walk's committed rows broke the count).
+>   `test-server`: bookings 403 for customer and moderator, 400 for a bad status or
+>   date, support sees a booking with customer, practitioner and payment, date and
+>   status filters. The dashboard walk adds: a moderator reads the feedback, hides the
+>   review (out of the rating, audited) and publishes it; finance filters bookings by
+>   date and status. It fails with the new sections hidden.
+
 ---
+
+> **P1 fixes** — no migration.
+> - Every browser-side staff update (role, practitioner status, application, service,
+>   setting, review) goes through `staffUpdate()`, which reads back the changed row.
+>   RLS skips a row the caller may not change without raising, so before this a refused
+>   update showed "Done". Now it shows "You do not have permission to change this."
+> - Applications: every staff role reads the queue, but only moderator / admin /
+>   super_admin get Approve / Reject (the 0005 policy).
+> - A practitioner's own bookings in My Account show their name
+>   (`active_practitioners()` leaves out the caller).
+> - Walk `p1_ui.mjs` fails before (no buttons hidden, a false "Done" for a support
+>   approve and a finance review hide, blank name) and passes after; every other walk
+>   still passes.
 
 ### Step 21 — Knowledge foundation (no AI)
 

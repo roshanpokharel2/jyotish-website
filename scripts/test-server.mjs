@@ -951,6 +951,133 @@ try {
   }
   check('questions: approval email attempted', r.status === 200 && (qJob?.status === 'sent' || qJob?.status === 'failed'), { r: r.body, qJob });
 
+  // ---- staff dashboard overview (A1) ------------------------------------------------------
+  const OVERVIEW = '/api/admin/overview';
+  const MONEY_KEYS = ['proofs', 'refunds', 'payouts'];
+  const asRole = async (user, role) => { await admin.from('users').update({ role }).eq('id', user.id); return call(OVERVIEW, { headers: bearer(user.token) }); };
+  r = await call(OVERVIEW);
+  check('overview: no token -> 401', r.status === 401, r);
+  r = await call(OVERVIEW, { headers: bearer(c.token) });
+  check('overview: customer -> 403', r.status === 403, r);
+  r = await call(OVERVIEW, { headers: bearer(a.token) });
+  check('overview: practitioner -> 403', r.status === 403, r);
+  r = await asRole(s, 'moderator');
+  check('overview: moderator gets moderation counts, no money counts',
+    r.status === 200 && Number.isInteger(r.body?.counts?.knowledge) && Number.isInteger(r.body.counts.applications)
+    && MONEY_KEYS.every((k) => !(k in r.body.counts)), r);
+  r = await asRole(s, 'support');
+  check('overview: support gets neither money nor moderation counts',
+    r.status === 200 && Number.isInteger(r.body?.counts?.bookingsToday) && [...MONEY_KEYS, 'knowledge'].every((k) => !(k in r.body.counts)), r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+  r = await call(OVERVIEW, { headers: bearer(f.token) });
+  check('overview: finance gets money counts, no moderation count',
+    r.status === 200 && MONEY_KEYS.every((k) => Number.isInteger(r.body?.counts?.[k])) && !('knowledge' in r.body.counts), r);
+  r = await asRole(f2, 'admin');
+  check('overview: admin gets every count', r.status === 200 && [...MONEY_KEYS, 'knowledge', 'applications', 'questionsWaiting'].every((k) => Number.isInteger(r.body?.counts?.[k])), r);
+  await admin.from('users').update({ role: 'finance' }).eq('id', f2.id);
+
+  // ---- staff dashboard customers (A2) -----------------------------------------------------
+  const v = await newUser('blockme');
+  await addCustomer(v);
+  const CUSTOMERS = '/api/admin/customers';
+  const setStatus = (user, id, value) => postJson(`${CUSTOMERS}/${id}/status`, user, value);
+  r = await call(`${CUSTOMERS}?q=blockme`, { headers: bearer(c.token) });
+  check('customers: customer -> 403', r.status === 403, r);
+  r = await call(`${CUSTOMERS}?q=blockme`, { headers: bearer(s.token) });
+  check('customers: moderator -> 403', r.status === 403, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await call(`${CUSTOMERS}?q=${encodeURIComponent(`blockme-${stamp},(*)`)}`, { headers: bearer(s.token) });
+  check('customers: support finds one account by email; filter characters are dropped',
+    r.status === 200 && r.body?.customers?.length === 1 && r.body.customers[0].id === v.customerId
+    && r.body.customers[0].role === 'customer' && !('dob_ad' in r.body.customers[0]), r);
+
+  r = await setStatus(s, v.customerId, { status: 'blocked' });
+  check('status: no reason -> 400', r.status === 400 && r.body?.error?.code === 'reason_required', r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'test' });
+  check('status: moderator -> 403', r.status === 403, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'Server test block' });
+  check('status: support blocks a customer', r.status === 200 && r.body?.customer?.status === 'blocked', r);
+  const { data: blockAudit } = await admin.from('audit_log').select('actor_user_id, actor_role, reason')
+    .eq('entity_id', v.customerId).eq('action', 'customer.status_changed').order('created_at', { ascending: false }).limit(1).single();
+  check('status: the audit row names the staff member and reason',
+    blockAudit?.actor_user_id === s.id && blockAudit.actor_role === 'support' && blockAudit.reason === 'Server test block', blockAudit);
+  r = await me(bearer(v.token));
+  check('status: the blocked customer gets nothing from the server', r.status === 403 && r.body?.error?.code === 'account_inactive', r);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'again' });
+  check('status: same status again -> 409', r.status === 409 && r.body?.error?.code === 'unchanged', r);
+  r = await setStatus(s, s.customerId, { status: 'blocked', reason: 'self' });
+  check('status: own account -> 409', r.status === 409 && r.body?.error?.code === 'own_account', r);
+  r = await setStatus(s, f.customerId, { status: 'blocked', reason: 'staff' });
+  check('status: a staff account -> 409', r.status === 409 && r.body?.error?.code === 'staff_account', r);
+  r = await setStatus(s, crypto.randomUUID(), { status: 'blocked', reason: 'nobody' });
+  check('status: unknown customer -> 404', r.status === 404, r);
+  r = await setStatus(s, v.customerId, { status: 'active', reason: 'Server test unblock' });
+  r = await me(bearer(v.token));
+  check('status: support unblocks; the customer is back', r.status === 200, r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+
+  // ---- staff dashboard bookings (A4) ------------------------------------------------------
+  const BOOKINGS = '/api/admin/bookings';
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(c.token) });
+  check('bookings: customer -> 403', r.status === 403, r);
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(s.token) });
+  check('bookings: moderator -> 403', r.status === 403, r);
+  r = await call(`${BOOKINGS}?status=everything`, { headers: bearer(f.token) });
+  check('bookings: unknown status -> 400', r.status === 400, r);
+  r = await call(`${BOOKINGS}?from=tomorrow`, { headers: bearer(f.token) });
+  check('bookings: bad date -> 400', r.status === 400, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(s.token) });
+  // Earlier sections cancel and replace bookings; any of this suite's on that day will do.
+  const listedBooking = r.body?.bookings?.find((x) => x.practitioner === 'Server Test Jyotish');
+  check('bookings: support sees the day\'s booking with customer, practitioner and payment',
+    r.status === 200 && listedBooking?.customer?.name === 'Server Test'
+    && 'paymentStatus' in listedBooking && !('subject' in listedBooking) && r.body.bookings.every((x) => x.startsAt.slice(0, 10) <= day), listedBooking ?? r);
+  const nextDay = new Date(Date.parse(`${day}T00:00:00+05:45`) + 86400e3).toLocaleDateString('en-CA', { timeZone: 'Asia/Kathmandu' });
+  r = await call(`${BOOKINGS}?from=${nextDay}`, { headers: bearer(s.token) });
+  check('bookings: a later date range leaves it out', r.status === 200 && !r.body.bookings.some((x) => x.id === listedBooking?.id), r.body);
+  r = await call(`${BOOKINGS}?status=${listedBooking?.status}&from=${day}&to=${day}`, { headers: bearer(s.token) });
+  check('bookings: status filter', r.status === 200 && r.body.bookings.length > 0 && r.body.bookings.every((x) => x.status === listedBooking?.status), r.body);
+
+  // ---- booking completion (C2) --------------------------------------------------------
+  // Fail-before: without C2 this route 404s for everyone. `booked` is confirmed and paid;
+  // earlier sections move its times, so set them here.
+  const COMPLETE = `/api/bookings/${booked?.id}/complete`;
+  const moveBooked = (startMin, endMin) => admin.from('bookings').update({
+    scheduled_at: new Date(Date.now() + startMin * 60e3).toISOString(),
+    ends_at: new Date(Date.now() + endMin * 60e3).toISOString(),
+  }).eq('id', booked?.id ?? crypto.randomUUID());
+  await moveBooked(30, 60);
+  r = await call(COMPLETE, { method: 'POST' });
+  check('complete: no token -> 401', r.status === 401, r);
+  r = await postJson(COMPLETE, a, { outcome: 'cancelled' });
+  check('complete: unknown outcome -> 400', r.status === 400, r);
+  r = await postJson(COMPLETE, a, { outcome: 'completed' });
+  check('complete: not ended yet -> 409', r.status === 409 && r.body?.error?.code === 'not_ended', r);
+  await moveBooked(-90, -60);
+  r = await postJson(COMPLETE, c, { outcome: 'completed' });
+  check('complete: the customer -> 404', r.status === 404, r);
+  r = await postJson(COMPLETE, f, { outcome: 'completed' });
+  check('complete: finance -> 404', r.status === 404, r);
+  r = await postJson('/api/bookings/not-a-uuid/complete', a, { outcome: 'completed' });
+  check('complete: bad id -> 404', r.status === 404, r);
+  r = await postJson(COMPLETE, a, { outcome: 'completed' });
+  check('complete: the practitioner completes the ended booking', r.status === 200 && r.body?.booking?.status === 'completed', r);
+  r = await postJson(COMPLETE, a, { outcome: 'no_show' });
+  check('complete: the practitioner cannot re-mark -> 409', r.status === 409 && r.body?.error?.code === 'already_finished', r);
+  r = await postJson(COMPLETE, s, { outcome: 'no_show' });
+  check('complete: support corrects it to no-show', r.status === 200 && r.body?.booking?.status === 'no_show', r);
+  r = await postJson(COMPLETE, s, { outcome: 'completed' });
+  check('complete: and back', r.status === 200 && r.body?.booking?.status === 'completed', r);
+  const { data: completionAudit } = await admin.from('audit_log').select('action, actor_user_id').eq('entity_id', booked?.id ?? crypto.randomUUID()).like('action', 'booking.%');
+  check('complete: every change audited with its actor',
+    completionAudit?.length === 3 && completionAudit.filter((x) => x.actor_user_id === s.id).length === 2 && completionAudit.some((x) => x.actor_user_id === a.id), completionAudit);
+  r = await call('/api/reminders/run', { method: 'POST', headers: bearer(env.CRON_SECRET) });
+  check('reminders: the run reports auto-completions', r.status === 200 && Number.isInteger(r.body?.completed), r.body);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);

@@ -15,6 +15,7 @@ const scripts = [
   '/site-assets/js/ask-flow.js',
   '/site-assets/js/booking-flow.js',
   '/site-assets/js/auth-module.js',
+  '/site-assets/js/admin-module.js',
   '/site-assets/js/shop-module.js',
   '/site-assets/js/classes-module.js',
   '/site-assets/js/chat-widget.js',

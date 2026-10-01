@@ -282,3 +282,18 @@ join through `bookings`:
 A third thing to sell (a course, a shop order) is then a new source column and a new
 branch, not a copy of the payment system.
 
+---
+
+## AD-21 — Staff writes: the database decides where it can (Step 20)
+
+The staff dashboard adds no write path of its own.
+- Where RLS and a guard trigger already decide (practitioner status, services, reviews,
+  settings, roles), the browser writes through RLS as the signed-in staff user. The
+  guard's refusal is the answer, and the same rule holds for every client.
+- Where only the service role may write (customer status, money), a Next.js route
+  checks the caller's role from the database (`requireUser`) and calls the
+  service-role function, which audits.
+
+Hiding a section is presentation only; nothing is safe because a button is missing.
+The overview returns counts the caller's role may open, never rows.
+

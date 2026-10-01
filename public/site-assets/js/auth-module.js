@@ -205,6 +205,17 @@ function accIsReviewer(){
   return ['finance','admin','super_admin'].includes(accRole);
 }
 
+async function accToken(){
+  const session = (await getMainSupabase().auth.getSession()).data.session;
+  return session?.access_token || null;
+}
+
+// After a staff action: re-render whichever screen the action came from.
+function accRefresh(){
+  if(typeof currentView !== 'undefined' && currentView === 'admin' && typeof renderAdmin === 'function') return renderAdmin();
+  renderMyAccount();
+}
+
 async function renderMyAccount(){
   const t = T[LANG];
   const grid = document.getElementById('myAccGrid');
@@ -222,15 +233,11 @@ async function renderMyAccount(){
     ['requests', t.bookingsTitle],
     ['jyotish', jyotishRecord ? t.jyotish.statusLabel : t.jyotish.title]
   ];
-  if(accIsStaff()) tabs.push(['applications', t.jyotishAdmin.title]);
-  if(accIsReviewer()) tabs.push(['payments', t.payReview.title]);
-  if(accIsReviewer()) tabs.push(['refunds', t.rf.title]);
-  if(accIsReviewer()) tabs.push(['payouts', t.po.title]);
   if(['jyotish','moderator','admin','super_admin'].includes(accRole)) tabs.push(['knowledge', t.kn.title]);
-  if(['finance','admin','super_admin'].includes(accRole)) tabs.push(['audit', t.au.title]);
   if(!tabs.some(tab => tab[0] === accTab)) accTab = 'profile';
 
   grid.innerHTML = `
+    ${accIsStaff() ? `<button class="btn btn-gold btn-block" style="margin-bottom:14px;" onclick="goView('admin')">${escapeHtml(t.adm.open)}</button>` : ''}
     <div class="faq-tabs" style="flex-wrap:wrap;">
       ${tabs.map(tab => `<button class="faq-tab${tab[0]===accTab?' active':''}" onclick="setAccTab('${tab[0]}')">${escapeHtml(tab[1])}</button>`).join('')}
     </div>
@@ -240,12 +247,7 @@ async function renderMyAccount(){
   if(accTab === 'profile') return renderAccountProfile(body);
   if(accTab === 'requests') return renderAccountRequests(body);
   if(accTab === 'jyotish') return renderJyotishPanel(body);
-  if(accTab === 'applications') return renderJyotishApplicationsQueue(body);
-  if(accTab === 'payments') return renderPaymentsQueue(body);
-  if(accTab === 'refunds') return renderRefundsQueue(body);
-  if(accTab === 'payouts') return renderPayoutsQueue(body);
   if(accTab === 'knowledge') return renderKnowledgeTab(body);
-  if(accTab === 'audit') return renderAuditTab(body);
 }
 
 function renderAccountProfile(body){
@@ -265,7 +267,7 @@ async function renderAccountRequests(body){
   // the older service requests below them.
   const [bookings, requests] = await Promise.all([
     client.from('bookings')
-      .select('id,scheduled_at,status,price_snapshot,currency,astrologer_id,services(name),payments(status),reviews(rating)')
+      .select('id,scheduled_at,ends_at,status,price_snapshot,currency,astrologer_id,services(name),payments(status),reviews(rating)')
       .order('scheduled_at', { ascending:false }).limit(20),
     client.from('service_requests')
       .select('id,request_type,status,created_at')
@@ -281,15 +283,21 @@ async function renderAccountRequests(body){
     try{
       const { data } = await client.rpc('active_practitioners');
       names = Object.fromEntries((data ?? []).map(p => [p.id, p.name]));
+      if(jyotishRecord) names[jyotishRecord.id] = jyotishRecord.name;
     } catch(err){ console.warn('Practitioner names could not be loaded:', err); }
     html += bookings.data.map(row => {
       const pay = row.payments?.[0]?.status;
       const when = new Date(row.scheduled_at).toLocaleString();
       const join = row.status === 'confirmed'
         ? `<br><a class="btn btn-gold" style="margin-top:6px;padding:4px 12px;font-size:.8rem;" href="/site-assets/consult.html?booking=${escapeHtml(row.id)}">${escapeHtml(t.cm.join)}</a>` : '';
+      // The practitioner's own booking: mark the outcome once it has ended; no review.
+      const own = jyotishRecord && row.astrologer_id === jyotishRecord.id;
+      const finished = t.bc[row.status] ? `<br><small>${escapeHtml(t.bc[row.status])}</small>` : '';
+      const extra = !own ? renderBookingReview(t, row)
+        : finished || (bookingCanComplete(row.status, pay, row.ends_at) ? '<br>' + bookingOutcomeButtons(row.id) : '');
       return `
-      <div class="review-row">
-        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small><br><small>${escapeHtml(t.pay.st[pay] || pay || '—')}</small>${renderBookingReview(t, row)}${join}</span>
+      <div class="review-row" data-booking="${escapeHtml(row.id)}">
+        <span><b>${escapeHtml(row.services?.name || '')}</b><br><small>${escapeHtml(when)} · ${escapeHtml(names[row.astrologer_id] || '')} · ${escapeHtml(row.currency)} ${escapeHtml(row.price_snapshot)}</small><br><small>${escapeHtml(t.pay.st[pay] || pay || '—')}</small>${extra}${join}</span>
       </div>`;
     }).join('');
   }
@@ -305,6 +313,37 @@ async function renderAccountRequests(body){
   }
 
   body.innerHTML = html || `<div class="empty-box"><p>${escapeHtml(t.myAccEmpty)}</p></div>`;
+}
+
+/* ============================================================
+   BOOKING OUTCOME
+   After a paid consultation has ended, its practitioner (or support / admin) marks it
+   completed or no-show. complete_booking() (0040) decides who may; the buttons only
+   show where it would agree.
+============================================================ */
+
+function bookingCanComplete(status, paymentStatus, endsAt){
+  return ['confirmed','in_progress'].includes(status) && paymentStatus === 'paid' && new Date(endsAt) <= new Date();
+}
+
+// Buttons for each outcome other than the current one (staff corrections pass it).
+function bookingOutcomeButtons(id, current){
+  const t = T[LANG].bc;
+  return ['completed','no_show'].filter(o => o !== current).map(o =>
+    `<button class="btn btn-ghost" style="margin:6px 6px 0 0;padding:4px 12px;font-size:.8rem;" data-outcome="${o}" onclick="completeBooking('${escapeHtml(id)}','${o}')">${escapeHtml(t[o])}</button>`).join('');
+}
+
+async function completeBooking(id, outcome){
+  const token = await accToken();
+  if(!token) return;
+  const response = await fetch(`/api/bookings/${encodeURIComponent(id)}/complete`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify({ outcome })
+  });
+  const result = await response.json().catch(()=>({}));
+  if(typeof showToast === 'function') showToast(response.ok ? T[LANG].bc.saved : (result.error?.message || T[LANG].loadFailed));
+  accRefresh();
 }
 
 /* ============================================================
@@ -427,129 +466,6 @@ async function submitJyotishApplication(){
 }
 
 /* ============================================================
-   JYOTISH APPLICATIONS QUEUE (staff)
-   A stand-in for the /admin dashboard in Step 20.
-============================================================ */
-
-async function renderJyotishApplicationsQueue(body){
-  const t = T[LANG].jyotishAdmin;
-  const { data, error } = await getMainSupabase()
-    .from('astrologers')
-    .select('id,name,qualification,experience_years,consultation_fee,applied_at')
-    .eq('status', 'pending_review')
-    .order('applied_at');
-
-  if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
-  if(!data || !data.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
-
-  body.innerHTML = data.map(row => `
-    <div class="review-row" style="align-items:flex-start;gap:12px;">
-      <span>
-        <b>${escapeHtml(row.name)}</b><br>
-        <small>${escapeHtml(row.qualification || '—')}</small><br>
-        <small>${escapeHtml(t.experience)}: ${escapeHtml(row.experience_years ?? 0)} · ${escapeHtml(t.fee)}: ${escapeHtml(row.consultation_fee)} · ${escapeHtml(t.applied)}: ${escapeHtml(new Date(row.applied_at).toLocaleDateString())}</small>
-      </span>
-      <span style="display:flex;gap:8px;flex-shrink:0;">
-        <button class="btn btn-gold" onclick="reviewJyotishApplication('${escapeHtml(row.id)}','active')">${escapeHtml(t.approve)}</button>
-        <button class="btn btn-ghost" onclick="reviewJyotishApplication('${escapeHtml(row.id)}','rejected')">${escapeHtml(t.reject)}</button>
-      </span>
-    </div>`).join('');
-}
-
-async function reviewJyotishApplication(id, status){
-  const t = T[LANG].jyotishAdmin;
-  const patch = { status };
-  if(status === 'rejected'){
-    // The database refuses a rejection with no reason, so ask rather than surface a
-    // constraint violation.
-    const reason = window.prompt(t.reasonPrompt);
-    if(!reason || !reason.trim()) return;
-    patch.rejection_reason = reason.trim();
-  }
-
-  const { error } = await getMainSupabase().from('astrologers').update(patch).eq('id', id);
-  if(typeof showToast === 'function') showToast(error ? error.message : t.done);
-  renderMyAccount();
-}
-
-/* ============================================================
-   PAYMENT VERIFICATION QUEUE (finance, admin, super_admin)
-   Oldest consultation first. Proof opens in a new tab through a short-lived
-   signed URL; approve/reject go through the server endpoints, which write the
-   audit row in the same transaction. The browser never writes payments.
-============================================================ */
-
-async function accToken(){
-  const session = (await getMainSupabase().auth.getSession()).data.session;
-  return session?.access_token || null;
-}
-
-// A booking shows its consultation time; a question, its number and text.
-function payQueueWhat(row){
-  if(row.booking) return new Date(row.booking.startsAt).toLocaleString();
-  if(row.question) return `Q-${String(row.question.number).padStart(6,'0')} · ${row.question.text}`;
-  return '';
-}
-
-async function renderPaymentsQueue(body){
-  const t = T[LANG].payReview;
-  const token = await accToken();
-  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
-
-  let queue;
-  try{
-    const response = await fetch('/api/payments/review-queue', { headers:{ Authorization:`Bearer ${token}` } });
-    queue = await response.json();
-    if(!response.ok) throw new Error(queue.error?.message || t.none);
-  } catch(err){
-    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
-    return;
-  }
-  if(!queue.payments?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
-
-  body.innerHTML = queue.payments.map(row => `
-    <div class="review-row" style="align-items:flex-start;gap:12px;">
-      <span>
-        <b>${escapeHtml(row.customer?.name || '—')} → ${escapeHtml(row.astrologer?.name || '—')}</b><br>
-        <small>${escapeHtml(row.service?.name || (row.question ? T[LANG].ctAsk : ''))} · ${escapeHtml(row.amount)} ${escapeHtml(row.currency)}</small><br>
-        <small>${escapeHtml(payQueueWhat(row))}${row.customerReference ? ` · ${escapeHtml(row.customerReference)}` : ''}</small><br>
-        <small><a href="${escapeHtml(row.proofUrl)}" target="_blank" rel="noopener">${escapeHtml(t.proof)}</a></small>
-      </span>
-      <span style="display:flex;gap:8px;flex-shrink:0;">
-        <button class="btn btn-gold" onclick="reviewPayment('${escapeHtml(row.id)}','approve')">${escapeHtml(t.approve)}</button>
-        <button class="btn btn-ghost" onclick="reviewPayment('${escapeHtml(row.id)}','reject')">${escapeHtml(t.reject)}</button>
-      </span>
-    </div>`).join('');
-}
-
-async function reviewPayment(id, action){
-  const t = T[LANG].payReview;
-  const token = await accToken();
-  if(!token) return;
-  let reason = null;
-  if(action === 'reject'){
-    reason = window.prompt(t.reasonPrompt);
-    if(!reason || !reason.trim()) return;
-    reason = reason.trim();
-  }
-  const response = await fetch(`/api/payments/${encodeURIComponent(id)}/${action}`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-    body: JSON.stringify(action === 'reject' ? { reason } : {})
-  });
-  const result = await response.json().catch(()=>({}));
-  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
-  renderMyAccount();
-}
-
-/* ============================================================
-   PRACTITIONER PAYOUTS
-   The practitioner's own payable balance (my_payout_balance), a request form,
-   and their request history. Requesting posts to /api/payouts, which checks
-   ownership, floor and balance against the database.
-============================================================ */
-
-/* ============================================================
    WEEKLY HOURS
    The practitioner's own weekly windows (availability, 0014), Kathmandu time.
    Written straight under RLS; the database refuses end <= start (0014) and two
@@ -670,6 +586,12 @@ async function removeDaysOff(id){
   renderDaysOff(document.getElementById('jyDaysOffBox'));
 }
 
+/* ============================================================
+   PRACTITIONER PAYOUTS
+   The practitioner's own payable balance (my_payout_balance), a request form,
+   and their request history. Requesting posts to /api/payouts, which checks
+   ownership, floor and balance against the database.
+============================================================ */
 async function renderPractitionerPayouts(box){
   if(!box) return;
   const t = T[LANG].po;
@@ -709,71 +631,6 @@ async function submitPayoutRequest(){
 }
 
 /* ============================================================
-   PAYOUT QUEUE (finance, admin, super_admin)
-============================================================ */
-
-async function renderPayoutsQueue(body){
-  const t = T[LANG].po;
-  const token = await accToken();
-  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
-
-  let queue = { payouts: [] };
-  try{
-    const response = await fetch('/api/payouts/queue', { headers:{ Authorization:`Bearer ${token}` } });
-    queue = await response.json();
-    if(!response.ok) throw new Error(queue.error?.message || t.none);
-  } catch(err){
-    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
-    return;
-  }
-  if(!queue.payouts?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
-
-  body.innerHTML = queue.payouts.map(row => {
-    const actions = [];
-    if(row.status === 'pending') actions.push(['approve', t.approve], ['cancel', t.cancel]);
-    if(row.status === 'approved') actions.push(['process', t.process], ['cancel', t.cancel]);
-    if(row.status === 'processing') actions.push(['pay', t.pay], ['fail', t.fail], ['cancel', t.cancel]);
-    if(row.status === 'failed') actions.push(['process', t.process], ['cancel', t.cancel]);
-    return `
-    <div class="review-row" style="align-items:flex-start;gap:12px;">
-      <span>
-        <b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)} · ${escapeHtml(row.astrologer?.name || '—')}</b><br>
-        <small>${escapeHtml(t.st[row.status] || row.status)}${row.payable != null ? ` · ${escapeHtml(t.balance)}: ${escapeHtml(row.payable)}` : ''}</small><br>
-        <small>${escapeHtml(new Date(row.createdAt).toLocaleString())}</small>
-      </span>
-      <span style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
-        ${actions.map(([action, label]) => `<button class="btn ${action === 'approve' || action === 'pay' ? 'btn-gold' : 'btn-ghost'}" onclick="payoutAction('${escapeHtml(row.id)}','${action}')">${escapeHtml(label)}</button>`).join('')}
-      </span>
-    </div>`;
-  }).join('');
-}
-
-async function payoutAction(id, action){
-  const t = T[LANG].po;
-  const token = await accToken();
-  if(!token) return;
-  let extra = {};
-  if(action === 'pay'){
-    const reference = window.prompt(t.reference);
-    if(!reference || !reference.trim()) return;
-    extra = { externalReference: reference.trim() };
-  }
-  if(action === 'fail' || action === 'cancel'){
-    const note = window.prompt(t.note);
-    if(!note || !note.trim()) return;
-    extra = { note: note.trim() };
-  }
-  const response = await fetch(`/api/payouts/${encodeURIComponent(id)}/${action}`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-    body: JSON.stringify(extra)
-  });
-  const result = await response.json().catch(()=>({}));
-  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
-  renderMyAccount();
-}
-
-/* ============================================================
    KNOWLEDGE (authors draft, moderators decide)
    Drafts are written straight to the table (RLS admits authors only, as
    drafts); submitting and moderating go through the server endpoints.
@@ -784,28 +641,16 @@ async function renderKnowledgeTab(body){
   const token = await accToken();
   const client = getMainSupabase();
   if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
-  const isMod = ['moderator','admin','super_admin'].includes(accRole);
 
   const { data: mine } = await client.from('knowledge_items')
     .select('id,content_type,title,status,language,created_at')
     .order('created_at', { ascending:false }).limit(20);
-
-  let queue = [];
-  if(isMod){
-    try{
-      const response = await fetch('/api/knowledge/queue', { headers:{ Authorization:`Bearer ${token}` } });
-      const result = await response.json();
-      if(response.ok) queue = result.items ?? [];
-    } catch(err){ console.warn('Knowledge queue failed:', err); }
-  }
 
   const row = (k, actions) => `
     <div class="review-row" style="align-items:flex-start;gap:12px;">
       <span><b>${escapeHtml(k.title)}</b><br><small>${escapeHtml(k.content_type)} · ${escapeHtml(k.language)} · ${escapeHtml(t.st[k.status] || k.status)}</small></span>
       <span style="display:flex;gap:8px;flex-shrink:0;">${actions}</span>
     </div>`;
-  const btn = (id, action, label, gold) =>
-    `<button class="btn ${gold ? 'btn-gold' : 'btn-ghost'}" onclick="knowledgeAction('${escapeHtml(id)}','${action}')">${escapeHtml(label)}</button>`;
 
   body.innerHTML = `
     <div style="padding:14px;border:1px solid var(--gold);border-radius:10px;margin-bottom:14px;">
@@ -821,14 +666,12 @@ async function renderKnowledgeTab(body){
     </div>
     <h4 style="margin:14px 0 6px;">${escapeHtml(t.mine)}</h4>
     ${(mine ?? []).map(k => row(k,
-      (k.status === 'draft' || k.status === 'rejected') ? btn(k.id, 'submit', t.submit, true) : ''
-    )).join('') || `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`}
-    ${isMod ? `<h4 style="margin:14px 0 6px;">${escapeHtml(t.queue)}</h4>` +
-      queue.map(k => `
-      <div class="review-row" style="align-items:flex-start;gap:12px;">
-        <span><b>${escapeHtml(k.title)}</b><br><small>${escapeHtml(k.author?.email || '')} · ${escapeHtml(k.content_type)} · ${escapeHtml(k.language)}</small><br><small>${escapeHtml((k.body || '').slice(0, 300))}</small></span>
-        <span style="display:flex;gap:8px;flex-shrink:0;">${btn(k.id, 'publish', t.publish, true)}${btn(k.id, 'reject', t.reject, false)}</span>
-      </div>`).join('') || '' : ''}`;
+      (k.status === 'draft' || k.status === 'rejected') ? knowledgeButton(k.id, 'submit', t.submit, true) : ''
+    )).join('') || `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`}`;
+}
+
+function knowledgeButton(id, action, label, gold){
+  return `<button class="btn ${gold ? 'btn-gold' : 'btn-ghost'}" onclick="knowledgeAction('${escapeHtml(id)}','${action}')">${escapeHtml(label)}</button>`;
 }
 
 async function submitKnowledgeDraft(){
@@ -849,7 +692,7 @@ async function submitKnowledgeDraft(){
     return;
   }
   if(typeof showToast === 'function') showToast(t.done);
-  renderMyAccount();
+  accRefresh();
 }
 
 async function knowledgeAction(id, action){
@@ -864,124 +707,5 @@ async function knowledgeAction(id, action){
   });
   const result = await response.json().catch(()=>({}));
   if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
-  renderMyAccount();
-}
-
-/* ============================================================
-   AUDIT LOG (finance, admin, super_admin)
-   The immutable trail, newest first. Reads ride the existing policy.
-============================================================ */
-
-async function renderAuditTab(body){
-  const t = T[LANG].au;
-  const { data, error } = await getMainSupabase().from('audit_log')
-    .select('created_at,actor_role,action,entity_type,reason')
-    .order('created_at', { ascending:false }).limit(50);
-  if(error){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
-  if(!data?.length){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`; return; }
-  body.innerHTML = data.map(row => `
-    <div class="review-row">
-      <span><b>${escapeHtml(row.action)}</b><br><small>${escapeHtml(row.entity_type)} · ${escapeHtml(row.actor_role || '—')}${row.reason ? ` · ${escapeHtml(row.reason)}` : ''}</small></span>
-      <small>${escapeHtml(new Date(row.created_at).toLocaleString())}</small>
-    </div>`).join('');
-}
-
-/* ============================================================
-   REFUND QUEUE (finance, admin, super_admin)
-   Open refunds oldest first, with a small form to record a new one against a
-   payment id. Completing asks for the eSewa reference of the transfer that
-   already happened; the server writes the reversals with it.
-============================================================ */
-
-async function renderRefundsQueue(body){
-  const t = T[LANG].rf;
-  const token = await accToken();
-  if(!token){ body.innerHTML = `<div class="empty-box"><p>${escapeHtml(T[LANG].signInToContinue)}</p></div>`; return; }
-
-  let queue = { refunds: [] };
-  try{
-    const response = await fetch('/api/refunds/queue', { headers:{ Authorization:`Bearer ${token}` } });
-    queue = await response.json();
-    if(!response.ok) throw new Error(queue.error?.message || t.none);
-  } catch(err){
-    body.innerHTML = `<div class="empty-box"><p>${escapeHtml(err.message)}</p></div>`;
-    return;
-  }
-
-  const rows = (queue.refunds ?? []).map(row => {
-    const actions = [];
-    if(row.status === 'requested') actions.push(['approve', t.approve], ['reject', t.reject]);
-    if(row.status === 'approved') actions.push(['process', t.process], ['reject', t.reject]);
-    if(row.status === 'processing') actions.push(['complete', t.complete]);
-    return `
-    <div class="review-row" style="align-items:flex-start;gap:12px;">
-      <span>
-        <b>${escapeHtml(row.currency)} ${escapeHtml(row.amount)} · ${escapeHtml(row.customer?.name || '—')}</b><br>
-        <small>${escapeHtml(row.status)} · ${escapeHtml(row.reason || '')}</small><br>
-        <small>${escapeHtml(payQueueWhat(row))}</small>
-      </span>
-      <span style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;">
-        ${actions.map(([action, label]) => `<button class="btn ${action === 'approve' || action === 'complete' ? 'btn-gold' : 'btn-ghost'}" onclick="refundAction('${escapeHtml(row.id)}','${action}')">${escapeHtml(label)}</button>`).join('')}
-      </span>
-    </div>`;
-  }).join('');
-
-  body.innerHTML = `
-    <div style="padding:14px;border:1px solid var(--gold);border-radius:10px;margin-bottom:14px;">
-      <h4 style="margin:0 0 8px;">${escapeHtml(t.requestTitle)}</h4>
-      <div class="field"><label>${escapeHtml(t.payment)}</label><input id="rfPayment" placeholder="payment uuid"></div>
-      <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.amount)}</label><input id="rfAmount" type="number" min="1" step="0.01"></div>
-      <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.reason)}</label><input id="rfReason" maxlength="1000"></div>
-      <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="submitRefundRequest()">${escapeHtml(t.request)}</button>
-      <div id="rfMsg"></div>
-    </div>
-    ${rows || `<div class="empty-box"><p>${escapeHtml(t.none)}</p></div>`}`;
-}
-
-async function submitRefundRequest(){
-  const t = T[LANG].rf;
-  const token = await accToken();
-  const msg = document.getElementById('rfMsg');
-  if(!token) return;
-  const response = await fetch('/api/refunds', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-    body: JSON.stringify({
-      paymentId: document.getElementById('rfPayment')?.value.trim(),
-      amount: Number(document.getElementById('rfAmount')?.value),
-      reason: document.getElementById('rfReason')?.value.trim()
-    })
-  });
-  const result = await response.json().catch(()=>({}));
-  if(!response.ok && msg){
-    msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(result.error?.message || t.done)}</div>`;
-    return;
-  }
-  if(typeof showToast === 'function') showToast(t.done);
-  renderMyAccount();
-}
-
-async function refundAction(id, action){
-  const t = T[LANG].rf;
-  const token = await accToken();
-  if(!token) return;
-  let extra = {};
-  if(action === 'reject'){
-    const note = window.prompt(t.reason);
-    if(!note || !note.trim()) return;
-    extra = { note: note.trim() };
-  }
-  if(action === 'complete'){
-    const reference = window.prompt(t.reference);
-    if(!reference || !reference.trim()) return;
-    extra = { externalReference: reference.trim() };
-  }
-  const response = await fetch(`/api/refunds/${encodeURIComponent(id)}/${action}`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-    body: JSON.stringify(extra)
-  });
-  const result = await response.json().catch(()=>({}));
-  if(typeof showToast === 'function') showToast(response.ok ? t.done : (result.error?.message || t.done));
-  renderMyAccount();
+  accRefresh();
 }

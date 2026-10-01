@@ -128,7 +128,7 @@ Nobody can approve their own practitioner application, so use a **second** accou
 (a second browser profile or a private window):
 
 1. Sign up with another email → **My Account** → the Jyotish tab → submit the application.
-2. Signed in as the super admin, **My Account** → the applications tab → **Approve**.
+2. Signed in as the super admin, **My Account** → **Staff dashboard** → Jyotish applications → **Approve**.
    The applicant becomes an active practitioner with the `jyotish` role.
 3. Optional: to make them the default practitioner in the app, copy their id from the
    SQL editor into `NEXT_PUBLIC_DEFAULT_ASTROLOGER_ID` and restart `npm run dev`:
@@ -266,6 +266,34 @@ Key guarantees:
 - Files remain under secure bucket policies
 
 This is implemented with policies such as checking `auth.uid() = user_id` and conversation participant membership.
+
+---
+
+### Staff dashboard
+
+Staff open it from **My Account** → **Staff dashboard**. Sections follow the role:
+
+| Section | Roles |
+| --- | --- |
+| Overview (counts), Jyotish applications (read) | moderator, support, finance, admin, super_admin |
+| Jyotish applications: approve / reject | moderator, admin, super_admin |
+| Customers: search, block / unblock with a reason | support, admin, super_admin |
+| Bookings: filter by status and dates | support, finance, admin, super_admin |
+| Bookings: mark an ended booking completed / no-show, or correct it | support, admin, super_admin |
+| Customers: change a role (admin roles: super_admin only) | admin, super_admin |
+| Practitioners: suspend / reactivate | moderator, admin, super_admin |
+| Reviews: hide / publish | moderator, admin, super_admin |
+| Services (price, minutes, status) and Settings | admin, super_admin |
+| Payments, Refunds, Payouts, Audit | finance, admin, super_admin |
+| Knowledge moderation | moderator, admin, super_admin |
+
+Hiding a section is only presentation; the routes and RLS refuse the same people
+(AD-21).
+
+After a paid consultation has ended, its practitioner marks it **Completed** or
+**No-show** in My Account → requests; only then can the customer rate it. Anything
+still open 24 hours after its end is completed by the scheduler run
+(`POST /api/reminders/run`, which also sends reminders).
 
 ---
 
