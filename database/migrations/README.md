@@ -59,6 +59,7 @@ self-record makes a duplicate fail — but it skips the runner's order checks.
 | `0033_consultation_join.sql` | 18 | Who may join a consultation, decided by the database |
 | `0034_question_payments.sql` | Q1 | Question service through the server: server-only `create_question()` / `answer_question()`; a payment has exactly one source (booking or question); proof, approval, rejection and refunds handle both; browser insert/update policies on `question_consultations` dropped, practitioners see paid questions only. **Supersedes** `payment_reviewer_ok()` (now takes the payment), `guard_payment_amount()`, `submit_payment_proof()`, `approve_payment()`, `reject_payment()`, `refund_actor_ok()`, `complete_refund()` |
 | `0035_availability_exceptions.sql` | E1 | Days off: `availability_exceptions` (whole Kathmandu dates, practitioner's own or admin; not public); `available_slots()` skips them, so `create_booking()` refuses them. Existing bookings untouched. **Supersedes** `available_slots()` |
+| `0036_availability_no_overlap.sql` | H1 | Weekly hours: exclusion constraint `availability_no_overlap` -- no two active windows of one practitioner overlap on a weekday (touching allowed). Header has the query to find overlaps before applying |
 
 ## Function privileges — read this before adding a `security definer` function
 

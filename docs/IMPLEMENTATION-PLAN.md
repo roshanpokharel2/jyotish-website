@@ -71,8 +71,9 @@ endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21
 in 0018–0033; each migration's header names its build checkpoint, and the plan step it
 covers is noted under that step below. Question service done (Q1–Q3: 0034, its routes and
 the ask form, below). Step 8 done, with days off
-(E1–E2: 0035 and the practitioner's Days off box, below). The project in `.env` is the **development**
-database; 0001–0035 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+(E1–E2: 0035 and the practitioner's Days off box, below). Weekly hours editor done
+(H1–H2: 0036 and the practitioner's Weekly hours box, below). The project in `.env` is the **development**
+database; 0001–0036 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
 `SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
@@ -1140,6 +1141,59 @@ depends on it.
 
 **Rollback** Revert the commit; the days off stored stay in force (remove them in the
 SQL editor if needed).
+
+#### Checkpoint H1 — weekly hours cannot overlap — `0036_availability_no_overlap.sql` ✅ (applied to development)
+
+**What** An exclusion constraint on `availability`: no two **active** windows of one
+practitioner overlap on the same weekday. Touching windows (09:00–12:00, 12:00–15:00)
+and inactive windows are allowed. Without it, overlapping windows made
+`available_slots()` offer staggered, overlapping start times. The booking exclusion
+constraint still prevented double bookings, but the calendar was confusing. This is
+needed before practitioners set hours in the browser (H2). The migration header has
+the query that must return no rows before applying it to a database with hours.
+
+**Test** `database/tests/0036_availability_no_overlap_test.sql` fails on 0035 (an
+overlapping window is accepted) and passes on 0036. It covers:
+- overlaps at the start and end refused;
+- touching windows, another weekday and an inactive window accepted;
+- re-activating an overlapping window refused;
+- rival and customer writes still refused;
+- touching windows give one even 30-minute sequence.
+
+All tests 0002–0036 pass.
+
+**Rollback** `alter table public.availability drop constraint availability_no_overlap;`
+
+#### Checkpoint H2 — the practitioner's Weekly hours box ✅ (running against development)
+
+**What**
+- My Account → Jyotish has a Weekly hours box above Days off:
+  - windows are grouped by weekday (Sunday to Saturday), each with a Remove button;
+  - an add row: weekday, from and to (`<input type="time" step="900">`).
+- Writes go straight under the 0014 RLS, like Days off.
+- Backwards times are refused in the form. Overlaps are refused by 0036, and its error
+  (`23P01`) is shown as a readable message; the rule lives only in the database.
+- Weekday names come from `Intl` in the page language, the same mapping the booking
+  calendar uses, so there are no new weekday strings.
+- The note "Changing hours does not move existing bookings."
+- Strings in ne / en / hi / sa. The README no longer says to use the SQL editor.
+
+**Test** A headless Edge walk:
+- with no hours, the customer's calendar offers nothing;
+- the practitioner adds 09:00–12:00 for all 7 days, plus a touching 12:00–13:00;
+- an overlapping and a backwards window are each refused with their message, and
+  8 rows are stored;
+- the box renders in ne / hi / sa;
+- the customer's calendar offers exactly 09:00…12:30 on that day and 09:00…11:30 the
+  next;
+- the practitioner removes that weekday, and the calendar offers nothing that day while
+  keeping the next;
+- no page errors, and nothing new in `localStorage`.
+
+The walk has 11 failures on the pre-H2 browser code. `npm run test:server` and the
+booking, chat, ask and days-off walks pass.
+
+**Rollback** Revert the commit; the stored hours stay in force.
 
 **What** Keep the `availability` table (weekly recurring rules). Add
 `availability_exceptions` (date-specific blocks/holidays). Add a

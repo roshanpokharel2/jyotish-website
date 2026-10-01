@@ -366,8 +366,10 @@ function renderJyotishPanel(body){
       <div class="review-row"><span>${escapeHtml(T[LANG].authFullName)}</span><b>${escapeHtml(jyotishRecord.name)}</b></div>
       <div class="review-row"><span>${escapeHtml(t.fee)}</span><b>${escapeHtml(jyotishRecord.consultation_fee)}</b></div>
       ${jyotishRecord.rejection_reason ? `<div class="review-row"><span>${escapeHtml(t.reason)}</span><b>${escapeHtml(jyotishRecord.rejection_reason)}</b></div>` : ''}
+      <div id="jyHoursBox"></div>
       <div id="jyDaysOffBox"></div>
       <div id="jyPayoutBox"></div>`;
+    renderWeeklyHours(document.getElementById('jyHoursBox'));
     renderDaysOff(document.getElementById('jyDaysOffBox'));
     renderPractitionerPayouts(document.getElementById('jyPayoutBox'));
     return;
@@ -546,6 +548,64 @@ async function reviewPayment(id, action){
    and their request history. Requesting posts to /api/payouts, which checks
    ownership, floor and balance against the database.
 ============================================================ */
+
+/* ============================================================
+   WEEKLY HOURS
+   The practitioner's own weekly windows (availability, 0014), Kathmandu time.
+   Written straight under RLS; the database refuses end <= start (0014) and two
+   active windows overlapping on one weekday (0036). available_slots() turns them
+   into bookable times.
+============================================================ */
+
+// 2026-01-04 is a Sunday: day_of_week 0..6 -> that week's dates, named in LANG.
+const whDayName = (dow) => bookingFormat(`2026-01-${String(4 + dow).padStart(2, '0')}T12:00:00+05:45`, { weekday:'long' });
+
+async function renderWeeklyHours(box){
+  if(!box || !jyotishRecord) return;
+  const t = T[LANG].wh;
+  const { data } = await getMainSupabase().from('availability').select('id,day_of_week,start_time,end_time')
+    .eq('astrologer_id', jyotishRecord.id).eq('is_active', true).order('day_of_week').order('start_time');
+  const rows = data ?? [];
+  const hm = (v) => String(v).slice(0, 5);
+  box.innerHTML = `
+    <h4 style="margin:18px 0 6px;">${escapeHtml(t.title)}</h4>
+    ${rows.length ? [0,1,2,3,4,5,6].filter(d => rows.some(r => r.day_of_week === d)).map(d => `
+      <div class="review-row" style="align-items:flex-start;gap:12px;">
+        <span><b>${escapeHtml(whDayName(d))}</b></span>
+        <span style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${rows.filter(r => r.day_of_week === d).map(r => `
+          <span class="wh-window">${escapeHtml(`${hm(r.start_time)}–${hm(r.end_time)}`)} <button class="btn btn-ghost" style="padding:2px 10px;font-size:.8rem;" onclick="removeWeeklyHours('${escapeHtml(r.id)}')">${escapeHtml(t.remove)}</button></span>`).join('')}
+        </span>
+      </div>`).join('') : `<p style="color:var(--ink-soft);font-size:.88rem;">${escapeHtml(t.none)}</p>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <div class="field"><label>${escapeHtml(t.day)}</label><select id="whDay">${[0,1,2,3,4,5,6].map(d => `<option value="${d}">${escapeHtml(whDayName(d))}</option>`).join('')}</select></div>
+      <div class="field"><label>${escapeHtml(t.from)}</label><input id="whFrom" type="time" step="900"></div>
+      <div class="field"><label>${escapeHtml(t.to)}</label><input id="whTo" type="time" step="900"></div>
+    </div>
+    <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="addWeeklyHours()">${escapeHtml(t.add)}</button>
+    <div id="whMsg"></div>
+    <p style="color:var(--ink-soft);font-size:.8rem;margin:6px 0 0;">${escapeHtml(t.note)}</p>`;
+}
+
+async function addWeeklyHours(){
+  const t = T[LANG].wh;
+  const day = Number(document.getElementById('whDay')?.value);
+  const from = document.getElementById('whFrom')?.value, to = document.getElementById('whTo')?.value;
+  const msg = document.getElementById('whMsg');
+  const show = (text) => { if(msg) msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(text)}</div>`; };
+  if(!from || !to) return show(T[LANG].validationRequired);
+  if(to <= from) return show(t.invalid);
+  const { error } = await getMainSupabase().from('availability').insert({
+    astrologer_id: jyotishRecord.id, day_of_week: day, start_time: from, end_time: to
+  });
+  if(error) return show(error.code === '23P01' ? t.overlap : error.code === '23514' ? t.invalid : error.message);
+  renderWeeklyHours(document.getElementById('jyHoursBox'));
+}
+
+async function removeWeeklyHours(id){
+  const { error } = await getMainSupabase().from('availability').delete().eq('id', id);
+  if(error && typeof showToast === 'function') showToast(error.message);
+  renderWeeklyHours(document.getElementById('jyHoursBox'));
+}
 
 /* ============================================================
    DAYS OFF
