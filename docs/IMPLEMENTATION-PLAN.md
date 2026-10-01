@@ -70,8 +70,9 @@ below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booki
 endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21 done
 in 0018–0033; each migration's header names its build checkpoint, and the plan step it
 covers is noted under that step below. Question service done (Q1–Q3: 0034, its routes and
-the ask form, below). The project in `.env` is the **development**
-database; 0001–0034 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+the ask form, below). Step 8 done, with days off
+(E1–E2: 0035 and the practitioner's Days off box, below). The project in `.env` is the **development**
+database; 0001–0035 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
 `SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
@@ -1079,7 +1080,66 @@ question service stops working until Q3 is restored.
 
 ### Step 8 — Availability and slot computation
 
-> **Done in Checkpoint 7b** (0014), except `availability_exceptions`.
+> **Done in Checkpoint 7b** (0014); days off (`availability_exceptions`) in E1–E2 (0035).
+
+#### Checkpoint E1 — days off — `0035_availability_exceptions.sql` ✅ (applied to development)
+
+**What**
+- `availability_exceptions` holds whole days a practitioner doesn't work: Kathmandu
+  dates, both ends included, at most a year, with an optional private reason of up to
+  200 characters.
+- It's managed like weekly hours: the practitioner edits their own rows and an admin
+  can edit any; staff can read them. It has no public or customer read.
+- `available_slots()` skips those days, and `create_booking()` only books what it
+  offers, so the server refuses them too.
+- A booking already on a newly blocked day is left alone. Moving or refunding it stays
+  a staff action.
+
+**Test** `database/tests/0035_availability_exceptions_test.sql` fails on 0034 (the
+table does not exist) and passes on 0035. It covers:
+- no slots on the blocked days, and the day after intact;
+- a reversed range refused;
+- visitors, customers and a rival cannot read the rows; a rival cannot add, change or
+  remove them;
+- `create_booking` on a blocked day → `SLOT_UNAVAILABLE`;
+- an earlier booking unchanged;
+- removing the day off brings the slots back.
+
+All tests 0002–0035 pass.
+
+**Rollback** Re-create the 0014 `available_slots()` and drop the table. Nothing else
+depends on it.
+
+#### Checkpoint E2 — the practitioner's Days off box ✅ (running against development)
+
+**What**
+- My Account → Jyotish has a Days off box: from and to dates, a private reason, and
+  the upcoming blocks, each with a Remove button.
+- Writes go straight under the 0035 RLS, like weekly hours. They involve no money or
+  status, so there's no route.
+- A block with live bookings in its days says how many stay booked, and to contact
+  support to move them.
+- The booking form is unchanged: blocked days simply offer no times.
+- Strings in ne / en / hi / sa.
+
+**Test**
+- `npm run test:server`:
+  - the practitioner blocks a day through RLS;
+  - it offers no times, and `POST /api/bookings` for it → 409 `slot_unavailable`;
+  - a customer cannot block it;
+  - removing the block gives the 6 times back.
+- A headless Edge walk:
+  - the practitioner adds a reversed range (refused in the form), then a day off; the
+    row warns about the booking already on it;
+  - the box renders in ne / hi / sa;
+  - the customer's calendar has no time that day and still has the next;
+  - the practitioner removes it, and the customer's calendar has the day again;
+  - no page errors, and nothing new in `localStorage`.
+- The walk has 9 failures on the pre-E2 browser code. The booking, chat and ask walks
+  still pass.
+
+**Rollback** Revert the commit; the days off stored stay in force (remove them in the
+SQL editor if needed).
 
 **What** Keep the `availability` table (weekly recurring rules). Add
 `availability_exceptions` (date-specific blocks/holidays). Add a

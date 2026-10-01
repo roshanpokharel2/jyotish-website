@@ -366,7 +366,9 @@ function renderJyotishPanel(body){
       <div class="review-row"><span>${escapeHtml(T[LANG].authFullName)}</span><b>${escapeHtml(jyotishRecord.name)}</b></div>
       <div class="review-row"><span>${escapeHtml(t.fee)}</span><b>${escapeHtml(jyotishRecord.consultation_fee)}</b></div>
       ${jyotishRecord.rejection_reason ? `<div class="review-row"><span>${escapeHtml(t.reason)}</span><b>${escapeHtml(jyotishRecord.rejection_reason)}</b></div>` : ''}
+      <div id="jyDaysOffBox"></div>
       <div id="jyPayoutBox"></div>`;
+    renderDaysOff(document.getElementById('jyDaysOffBox'));
     renderPractitionerPayouts(document.getElementById('jyPayoutBox'));
     return;
   }
@@ -544,6 +546,69 @@ async function reviewPayment(id, action){
    and their request history. Requesting posts to /api/payouts, which checks
    ownership, floor and balance against the database.
 ============================================================ */
+
+/* ============================================================
+   DAYS OFF
+   Whole days the practitioner does not work (availability_exceptions, 0035).
+   Written straight under RLS, like weekly hours: the practitioner's own rows only.
+   available_slots() skips these days, so the booking form and the server stop
+   offering them. Bookings already on those days stay; the note says so.
+============================================================ */
+
+const nptDate = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone:'Asia/Kathmandu' });
+
+async function renderDaysOff(box){
+  if(!box || !jyotishRecord) return;
+  const t = T[LANG].dayoff;
+  const client = getMainSupabase();
+  const today = nptDate(Date.now());
+  const [off, live] = await Promise.all([
+    client.from('availability_exceptions').select('id,starts_on,ends_on,reason')
+      .eq('astrologer_id', jyotishRecord.id).gte('ends_on', today).order('starts_on'),
+    client.from('bookings').select('scheduled_at')
+      .eq('astrologer_id', jyotishRecord.id).in('status', ['payment_pending','confirmed','in_progress'])
+      .gte('scheduled_at', new Date().toISOString())
+  ]);
+  const liveDays = (live.data ?? []).map(b => nptDate(b.scheduled_at));
+  box.innerHTML = `
+    <h4 style="margin:18px 0 6px;">${escapeHtml(t.title)}</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div class="field"><label>${escapeHtml(t.from)}</label><input id="doFrom" type="date" min="${today}"></div>
+      <div class="field"><label>${escapeHtml(t.to)}</label><input id="doTo" type="date" min="${today}"></div>
+    </div>
+    <div class="field" style="margin-top:8px;"><label>${escapeHtml(t.reason)}</label><input id="doReason" maxlength="200"></div>
+    <button class="btn btn-gold btn-block" style="margin-top:10px;" onclick="addDaysOff()">${escapeHtml(t.add)}</button>
+    <div id="doMsg"></div>
+    ${(off.data ?? []).map(row => {
+      const booked = liveDays.filter(d => d >= row.starts_on && d <= row.ends_on).length;
+      return `<div class="review-row" style="align-items:flex-start;gap:12px;">
+        <span><b>${escapeHtml(row.starts_on === row.ends_on ? row.starts_on : `${row.starts_on} → ${row.ends_on}`)}</b>${row.reason ? `<br><small>${escapeHtml(row.reason)}</small>` : ''}${booked ? `<br><small style="color:var(--danger,#b3261e);">${escapeHtml(t.booked.replace('{n}', booked))}</small>` : ''}</span>
+        <button class="btn btn-ghost" style="flex-shrink:0;" onclick="removeDaysOff('${escapeHtml(row.id)}')">${escapeHtml(t.remove)}</button>
+      </div>`;
+    }).join('') || `<p style="color:var(--ink-soft);font-size:.88rem;">${escapeHtml(t.none)}</p>`}`;
+}
+
+async function addDaysOff(){
+  const t = T[LANG].dayoff;
+  const from = document.getElementById('doFrom')?.value;
+  const to = document.getElementById('doTo')?.value || from;
+  const msg = document.getElementById('doMsg');
+  const show = (text) => { if(msg) msg.innerHTML = `<div class="disclaimer-box" style="margin-top:10px;">${escapeHtml(text)}</div>`; };
+  if(!from) return show(T[LANG].validationRequired);
+  if(to < from) return show(t.invalid);
+  const { error } = await getMainSupabase().from('availability_exceptions').insert({
+    astrologer_id: jyotishRecord.id, starts_on: from, ends_on: to,
+    reason: document.getElementById('doReason')?.value.trim() || null
+  });
+  if(error) return show(error.message);
+  renderDaysOff(document.getElementById('jyDaysOffBox'));
+}
+
+async function removeDaysOff(id){
+  const { error } = await getMainSupabase().from('availability_exceptions').delete().eq('id', id);
+  if(error && typeof showToast === 'function') showToast(error.message);
+  renderDaysOff(document.getElementById('jyDaysOffBox'));
+}
 
 async function renderPractitionerPayouts(box){
   if(!box) return;

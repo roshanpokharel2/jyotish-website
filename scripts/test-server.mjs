@@ -330,6 +330,18 @@ try {
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: new Date(Date.parse(at(0)) + 10 * 60e3).toISOString() });
   check('book: a time that is not offered -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
 
+  // Days off (0035): the practitioner blocks the day from the browser; it offers nothing
+  // and the server refuses it. Removing the block gives the times back.
+  const dayOff = await a.db.from('availability_exceptions').insert({ astrologer_id: astro.id, starts_on: day, ends_on: day }).select('id').single();
+  check('days off: the practitioner blocks a day (RLS)', !dayOff.error, dayOff);
+  check('days off: a blocked day offers no times', (await freeSlots()).length === 0, null);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
+  check('book: a day off -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
+  const rivalOff = await c.db.from('availability_exceptions').insert({ astrologer_id: astro.id, starts_on: day, ends_on: day });
+  check('days off: a customer cannot block a practitioner\'s day (RLS)', !!rivalOff.error, rivalOff);
+  await a.db.from('availability_exceptions').delete().eq('id', dayOff.data?.id ?? crypto.randomUUID());
+  check('days off: removing the block gives the times back', (await freeSlots()).length === 6, null);
+
   // The browser's claims about price, status, owner and length are ignored.
   const sentAt = Date.now();
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: ' Career question ',
