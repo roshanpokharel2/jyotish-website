@@ -156,36 +156,52 @@ async function renderBookingsAdmin(){
     </details>`).join('');
 }
 
+// Paid questions assigned to this practitioner (RLS shows nothing unpaid, 0034).
+// Answers go through the server, which checks the assignment and locks the final one.
 async function renderQuestionConsultationsAdmin(){
   const panel = document.getElementById('questionConsultationsAdminGrid');
   if(!panel) return;
   const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
-  if(!client || !mainAuthUser){ panel.closest('.booking-panel')?.style.setProperty('display','none'); return; }
+  const box = panel.closest('.booking-panel');
+  if(!client || !mainAuthUser){ box?.style.setProperty('display','none'); return; }
   const {data:astrologer} = await client.from('astrologers').select('id').eq('user_id',mainAuthUser.id).maybeSingle();
-  if(!astrologer){ panel.closest('.booking-panel')?.style.setProperty('display','none'); return; }
-  panel.closest('.booking-panel')?.style.removeProperty('display');
-  panel.innerHTML = '<div class="empty-box"><p>Loading question consultations...</p></div>';
-  const {data, error} = await client.from('question_consultations').select('*').neq('payment_status','UNPAID').order('created_at',{ascending:false});
+  if(!astrologer){ box?.style.setProperty('display','none'); return; }
+  box?.style.removeProperty('display');
+  const t = T[LANG];
+  panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.loadingText)}</p></div>`;
+  // The practitioner's own questions as a customer are readable too; keep only assigned ones.
+  const {data, error} = await client.from('question_consultations')
+    .select('id,question_id,customer_name,birth_snapshot,question_text,status,answer,price_snapshot,currency')
+    .eq('astrologer_id',astrologer.id).neq('payment_status','UNPAID').order('created_at',{ascending:false});
   if(error){ panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(error.message)}</p></div>`; return; }
-  if(!data?.length){ panel.innerHTML = '<div class="empty-box"><p>No assigned question consultations.</p></div>'; return; }
+  if(!data?.length){ panel.innerHTML = `<div class="empty-box"><p>${escapeHtml(t.aq.panelEmpty)}</p></div>`; return; }
   panel.innerHTML = data.map(item=>{
-    const birth = item.birth_snapshot || {};
-    const qid = item.question_id ? `Q-${String(item.question_id).padStart(6,'0')}` : item.id;
-    const answer = String(item.answer || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<details class="booking-record-folder" style="margin-top:12px;"><summary><span><strong>${escapeHtml(qid)}</strong><small>${escapeHtml(item.status)} · ${escapeHtml(item.customer_name)}</small></span><small>${escapeHtml(item.token || 'Token after payment verification')}</small></summary>
-      <div class="booking-record-list"><div class="disclaimer-box" style="text-align:left;"><b>Customer:</b> ${escapeHtml(item.customer_name)}<br><b>Birth:</b> BS ${escapeHtml((birth.dob_bs||[]).join('/'))} · AD ${escapeHtml(birth.dob_ad||'—')} · ${escapeHtml(birth.birth_time||'—')} · ${escapeHtml(birth.birth_place||'—')}, ${escapeHtml(birth.birth_country||'—')}<br><b>Payment:</b> ${escapeHtml(item.payment_status)} · NPR 100<br><b>Question:</b> ${escapeHtml(item.question_text)}</div>
-      <div class="field"><label>Astrological Analysis</label><textarea rows="7" id="answer-${item.id}">${answer}</textarea></div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="saveQuestionAnswer('${item.id}','${qid}','IN REVIEW')">Save Draft</button><button class="btn btn-gold" onclick="saveQuestionAnswer('${item.id}','${qid}','ANSWERED')">Submit Answer</button></div></div></details>`;
+    const b = item.birth_snapshot || {};
+    const bs = b.dobBs ? `BS ${b.dobBs.year}/${b.dobBs.month}/${b.dobBs.day} · ` : '';
+    const qid = `Q-${String(item.question_id).padStart(6,'0')}`;
+    const open = item.status==='PAID' || item.status==='IN REVIEW';
+    const status = t.aq.st[item.status] || item.status;
+    return `<details class="booking-record-folder" style="margin-top:12px;"><summary><span><strong>${escapeHtml(qid)}</strong><small>${escapeHtml(status)} · ${escapeHtml(b.name || item.customer_name)}</small></span></summary>
+      <div class="booking-record-list"><div class="disclaimer-box" style="text-align:left;"><b>${escapeHtml(t.aq.birth)}:</b> ${escapeHtml(bs)}AD ${escapeHtml(b.dobAd||'—')} · ${escapeHtml(b.tob||'—')} · ${escapeHtml(b.pob||'—')}, ${escapeHtml(b.country||'—')}<br><b>${escapeHtml(t.consultationFee)}:</b> ${escapeHtml(item.currency)} ${escapeHtml(item.price_snapshot)}<br><b>${escapeHtml(t.aq.question)}:</b> ${escapeHtml(item.question_text)}</div>
+      <div class="field"><label>${escapeHtml(t.aq.answer)}</label><textarea rows="7" maxlength="5000" id="answer-${escapeHtml(item.id)}" ${open?'':'readonly'}>${escapeHtml(item.answer || '')}</textarea></div>
+      ${open ? `<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="saveQuestionAnswer('${escapeHtml(item.id)}',false)">${escapeHtml(t.aq.draft)}</button><button class="btn btn-gold" onclick="saveQuestionAnswer('${escapeHtml(item.id)}',true)">${escapeHtml(t.aq.submit)}</button></div>` : ''}</div></details>`;
   }).join('');
 }
 
-async function saveQuestionAnswer(recordId, questionId, status){
+async function saveQuestionAnswer(id, final){
+  const t = T[LANG];
   const client = typeof getMainSupabase === 'function' ? getMainSupabase() : null;
-  const answer = document.getElementById(`answer-${recordId}`)?.value.trim();
-  if(!client || !answer){ showToast('Answer text is required.'); return; }
-  const update = {answer,status};
-  if(status==='ANSWERED') update.answered_at = new Date().toISOString();
-  const {error} = await client.from('question_consultations').update(update).eq('id',recordId);
-  if(error){ showToast(error.message); return; }
-  showToast(status==='ANSWERED' ? 'Answer submitted.' : 'Draft saved.');
+  const answer = document.getElementById(`answer-${id}`)?.value.trim();
+  if(!answer){ showToast(t.aq.required); return; }
+  const session = client && (await client.auth.getSession()).data.session;
+  if(!session){ showToast(t.signInToContinue); return; }
+  const response = await fetch(`/api/questions/${encodeURIComponent(id)}/answer`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}` },
+    body:JSON.stringify({ answer, final })
+  });
+  const body = await response.json().catch(()=>({}));
+  if(!response.ok){ showToast(body.error?.message || t.loadFailed); return; }
+  showToast(final ? t.aq.sent : t.aq.saved2);
   renderQuestionConsultationsAdmin();
 }

@@ -330,6 +330,18 @@ try {
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: new Date(Date.parse(at(0)) + 10 * 60e3).toISOString() });
   check('book: a time that is not offered -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
 
+  // Days off (0035): the practitioner blocks the day from the browser; it offers nothing
+  // and the server refuses it. Removing the block gives the times back.
+  const dayOff = await a.db.from('availability_exceptions').insert({ astrologer_id: astro.id, starts_on: day, ends_on: day }).select('id').single();
+  check('days off: the practitioner blocks a day (RLS)', !dayOff.error, dayOff);
+  check('days off: a blocked day offers no times', (await freeSlots()).length === 0, null);
+  r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0) });
+  check('book: a day off -> 409', r.status === 409 && r.body?.error?.code === 'slot_unavailable', r);
+  const rivalOff = await c.db.from('availability_exceptions').insert({ astrologer_id: astro.id, starts_on: day, ends_on: day });
+  check('days off: a customer cannot block a practitioner\'s day (RLS)', !!rivalOff.error, rivalOff);
+  await a.db.from('availability_exceptions').delete().eq('id', dayOff.data?.id ?? crypto.randomUUID());
+  check('days off: removing the block gives the times back', (await freeSlots()).length === 6, null);
+
   // The browser's claims about price, status, owner and length are ignored.
   const sentAt = Date.now();
   r = await book(c, { astrologerId: astro.id, serviceId: callService, startsAt: at(0), notes: ' Career question ',
@@ -815,6 +827,256 @@ try {
   const roomJs = await (await fetch(`${base}/site-assets/js/consult-room.js`)).text();
   check('room: script joins through the endpoint, never mints',
     roomJs.includes('/api/consultations/join') && roomJs.includes('LivekitClient.Room') && !roomJs.includes('AccessToken'), roomJs.length);
+
+  // ---- questions (Q2) ------------------------------------------------------------------
+  // Fail-before: without Q2 these routes 404.
+  const QUESTIONS = '/api/questions';
+  const answerQ = (id, user, value) => postJson(`${QUESTIONS}/${id}/answer`, user, value);
+  const rv = await newUser('rival');
+  const { data: rivalAstro, error: rivalError } = await admin.from('astrologers')
+    .insert({ user_id: rv.id, name: 'Server Test Rival', status: 'active' }).select('id').single();
+  if (rivalError) throw rivalError;
+
+  r = await call(QUESTIONS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  check('questions: no token -> 401', r.status === 401, r);
+  const ask = { astrologerId: astro.id, question: '  Will Saturn affect my career?  ', subject: person };
+  for (const [what, value] of [['a bad practitioner id', { ...ask, astrologerId: 'x' }], ['a blank question', { ...ask, question: '   ' }],
+    ['a 2001-character question', { ...ask, question: 'x'.repeat(2001) }], ['no birth details', { ...ask, subject: undefined }],
+    ['an impossible birth date', { ...ask, subject: { ...person, dobAd: '1990-02-30' } }]]) {
+    r = await postJson(QUESTIONS, c, value);
+    check(`questions: ${what} -> 400`, r.status === 400 && r.body?.error?.code === 'invalid_body', r);
+  }
+  r = await postJson(QUESTIONS, b, ask);
+  check('questions: blocked customer -> 403', r.status === 403, r);
+  r = await postJson(QUESTIONS, a, { ...ask });
+  check('questions: a practitioner cannot ask themselves -> 400', r.status === 400 && r.body?.error?.code === 'self', r);
+  r = await postJson(QUESTIONS, c, { ...ask, astrologerId: crypto.randomUUID() });
+  check('questions: unknown practitioner -> 404', r.status === 404, r);
+
+  // The browser's claims about price, status and owner are ignored.
+  r = await postJson(QUESTIONS, c, { ...ask, price: 1, status: 'PAID', paymentStatus: 'PAID', customerId: s.customerId, answer: 'forged' });
+  const asked = r.body?.question;
+  check('questions: ask -> 200, price and status from the database',
+    r.status === 200 && asked?.price === 100 && asked?.currency === 'NPR' && asked?.status === 'UNPAID'
+    && asked?.question === 'Will Saturn affect my career?' && asked?.astrologerId === astro.id && asked?.paymentId
+    && asked?.subject?.name === 'Ram' && !('commission' in asked), r);
+  const { data: askedRow } = await admin.from('question_consultations').select('customer_id, answer').eq('id', asked?.id ?? crypto.randomUUID()).single();
+  check('questions: owned by the caller, no forged answer', askedRow?.customer_id === c.customerId && askedRow?.answer === null, askedRow);
+  const unpaidPeek = await a.db.from('question_consultations').select('id').eq('id', asked?.id ?? crypto.randomUUID());
+  check('questions: the practitioner cannot see it before payment', unpaidPeek.data?.length === 0, unpaidPeek);
+  const directAsk = await c.db.from('question_consultations')
+    .insert({ customer_id: c.customerId, customer_name: 'Direct', question_text: 'Straight from the browser' }).select('id');
+  check('questions: the browser cannot insert directly', !!directAsk.error, directAsk);
+
+  r = await postJson(QUESTIONS, c, ask);
+  const asked2 = r.body?.question;
+  r = await postJson(QUESTIONS, c, ask);
+  check('questions: a third unpaid question -> 409', r.status === 409 && r.body?.error?.code === 'too_many_unpaid', r);
+
+  r = await uploadProof(asked?.paymentId ?? crypto.randomUUID(), s, [PNG, 'q.png', 'image/png']);
+  check('questions: another customer cannot upload the proof -> 404', r.status === 404, r);
+  r = await uploadProof(asked?.paymentId ?? crypto.randomUUID(), c, [PNG, 'q.png', 'image/png']);
+  check('questions: proof -> 200 proof_submitted', r.status === 200 && r.body?.payment?.status === 'proof_submitted', r);
+  proofPrefixes.add(`${c.id}/${asked?.paymentId}`);
+  r = await uploadProof(asked2?.paymentId ?? crypto.randomUUID(), c, [PDF, 'q2.pdf', 'application/pdf']);
+  check('questions: second proof -> 200', r.status === 200, r);
+  proofPrefixes.add(`${c.id}/${asked2?.paymentId}`);
+
+  r = await call(QUEUE, { headers: bearer(f.token) });
+  const qItem = r.body?.payments?.find((p) => p.id === asked?.paymentId);
+  check('questions: the review queue shows it as a question',
+    r.status === 200 && qItem?.kind === 'question' && qItem?.question?.text === 'Will Saturn affect my career?'
+    && qItem?.booking === null && qItem?.customer?.name && qItem?.astrologer?.name === 'Server Test Jyotish' && qItem?.proofUrl, r.body);
+  r = await decide(asked?.paymentId ?? crypto.randomUUID(), 'approve', s, {});
+  check('questions: moderator cannot approve -> 403', r.status === 403, r);
+  r = await decide(asked?.paymentId ?? crypto.randomUUID(), 'approve', f, {});
+  check('questions: finance approves -> 200 paid', r.status === 200 && r.body?.payment?.status === 'paid', r);
+  r = await decide(asked2?.paymentId ?? crypto.randomUUID(), 'reject', f, { reason: 'No money arrived' });
+  check('questions: finance rejects the second -> 200', r.status === 200 && r.body?.payment?.status === 'rejected', r);
+  const { data: qState } = await admin.from('question_consultations').select('id, status, payment_status').in('id', [asked?.id, asked2?.id].filter(Boolean));
+  const stateOf = (id) => qState?.find((q) => q.id === id);
+  check('questions: approved is PAID, rejected is CLOSED',
+    stateOf(asked?.id)?.status === 'PAID' && stateOf(asked?.id)?.payment_status === 'PAID'
+    && stateOf(asked2?.id)?.status === 'CLOSED' && stateOf(asked2?.id)?.payment_status === 'FAILED', qState);
+
+  const paidPeek = await a.db.from('question_consultations').select('id, question_text').eq('id', asked?.id ?? crypto.randomUUID());
+  check('questions: the practitioner sees it once paid', paidPeek.data?.length === 1, paidPeek);
+  const rivalPeek = await rv.db.from('question_consultations').select('id').eq('id', asked?.id ?? crypto.randomUUID());
+  check('questions: a rival practitioner never sees it', rivalPeek.data?.length === 0, rivalPeek);
+  const directAnswer = await a.db.from('question_consultations').update({ answer: 'direct' }).eq('id', asked?.id ?? crypto.randomUUID()).select('id');
+  check('questions: the browser cannot write the answer', !!directAnswer.error || directAnswer.data?.length === 0, directAnswer);
+
+  r = await call(`${QUESTIONS}/${asked?.id}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  check('answer: no token -> 401', r.status === 401, r);
+  r = await answerQ(asked?.id, rv, { answer: 'Rival says', final: true });
+  check('answer: a rival practitioner -> 404', r.status === 404, r);
+  r = await answerQ(asked?.id, c, { answer: 'I answer myself', final: true });
+  check('answer: the customer -> 404', r.status === 404, r);
+  r = await answerQ(asked?.id, a, { answer: '   ', final: false });
+  check('answer: blank -> 400', r.status === 400, r);
+  r = await answerQ(asked?.id, a, { answer: 'Draft', final: 'yes' });
+  check('answer: final not a boolean -> 400', r.status === 400, r);
+  r = await answerQ(asked2?.id, a, { answer: 'Closed one', final: true });
+  check('answer: a rejected question -> 409', r.status === 409 && r.body?.error?.code === 'closed', r);
+  r = await answerQ(asked?.id, a, { answer: 'Draft answer', final: false });
+  check('answer: draft -> 200 IN REVIEW', r.status === 200 && r.body?.question?.status === 'IN REVIEW' && !r.body?.question?.answeredAt, r);
+  r = await answerQ(asked?.id, a, { answer: 'Saturn favours patience in your work.', final: true });
+  check('answer: final -> 200 ANSWERED', r.status === 200 && r.body?.question?.status === 'ANSWERED' && r.body?.question?.answeredAt, r);
+  r = await answerQ(asked?.id, a, { answer: 'Changed my mind', final: true });
+  check('answer: locked once final -> 409', r.status === 409, r);
+  const custRead = await c.db.from('question_consultations').select('status, answer').eq('id', asked?.id ?? crypto.randomUUID()).single();
+  check('answer: the customer reads it', custRead.data?.status === 'ANSWERED' && custRead.data?.answer === 'Saturn favours patience in your work.', custRead);
+  const { data: qNotes } = await admin.from('notifications').select('type').eq('user_id', c.id).in('type', ['question_payment_verified', 'question_answered']);
+  check('answer: the customer was notified of payment and answer', qNotes?.length === 2, qNotes);
+
+  r = await postJson(REFUNDS, f, { paymentId: asked?.paymentId, amount: 100, reason: 'Question refund' });
+  const qRefund = r.body?.refund?.id;
+  check('questions: finance records a refund -> 200', r.status === 200, r);
+  r = await call(`${REFUNDS}/queue`, { headers: bearer(f.token) });
+  const qRefundItem = r.body?.refunds?.find((x) => x.id === qRefund);
+  check('questions: the refund queue shows it as a question',
+    r.status === 200 && qRefundItem?.kind === 'question' && qRefundItem?.booking === null && qRefundItem?.question?.id === asked?.id && qRefundItem?.customer?.name, r.body);
+  await refundDo(qRefund ?? crypto.randomUUID(), 'approve', f, {});
+  r = await refundDo(qRefund ?? crypto.randomUUID(), 'complete', f, { externalReference: 'ESEWA-Q1' });
+  check('questions: refund completes -> 200', r.status === 200 && r.body?.refund?.status === 'completed', r);
+  const { data: qRefunded } = await admin.from('question_consultations').select('payment_status').eq('id', asked?.id ?? crypto.randomUUID()).single();
+  check('questions: fully refunded question is REFUNDED', qRefunded?.payment_status === 'REFUNDED', qRefunded);
+
+  // The approval email renders for a question (no consultation time to show).
+  let qJob = await jobForEntity(asked?.paymentId);
+  for (let round = 0; qJob?.status === 'pending' && round < 4; round++) {
+    r = await drain(env.CRON_SECRET);
+    if (r.status !== 200) break;
+    qJob = await jobForEntity(asked?.paymentId);
+  }
+  check('questions: approval email attempted', r.status === 200 && (qJob?.status === 'sent' || qJob?.status === 'failed'), { r: r.body, qJob });
+
+  // ---- staff dashboard overview (A1) ------------------------------------------------------
+  const OVERVIEW = '/api/admin/overview';
+  const MONEY_KEYS = ['proofs', 'refunds', 'payouts'];
+  const asRole = async (user, role) => { await admin.from('users').update({ role }).eq('id', user.id); return call(OVERVIEW, { headers: bearer(user.token) }); };
+  r = await call(OVERVIEW);
+  check('overview: no token -> 401', r.status === 401, r);
+  r = await call(OVERVIEW, { headers: bearer(c.token) });
+  check('overview: customer -> 403', r.status === 403, r);
+  r = await call(OVERVIEW, { headers: bearer(a.token) });
+  check('overview: practitioner -> 403', r.status === 403, r);
+  r = await asRole(s, 'moderator');
+  check('overview: moderator gets moderation counts, no money counts',
+    r.status === 200 && Number.isInteger(r.body?.counts?.knowledge) && Number.isInteger(r.body.counts.applications)
+    && MONEY_KEYS.every((k) => !(k in r.body.counts)), r);
+  r = await asRole(s, 'support');
+  check('overview: support gets neither money nor moderation counts',
+    r.status === 200 && Number.isInteger(r.body?.counts?.bookingsToday) && [...MONEY_KEYS, 'knowledge'].every((k) => !(k in r.body.counts)), r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+  r = await call(OVERVIEW, { headers: bearer(f.token) });
+  check('overview: finance gets money counts, no moderation count',
+    r.status === 200 && MONEY_KEYS.every((k) => Number.isInteger(r.body?.counts?.[k])) && !('knowledge' in r.body.counts), r);
+  r = await asRole(f2, 'admin');
+  check('overview: admin gets every count', r.status === 200 && [...MONEY_KEYS, 'knowledge', 'applications', 'questionsWaiting'].every((k) => Number.isInteger(r.body?.counts?.[k])), r);
+  await admin.from('users').update({ role: 'finance' }).eq('id', f2.id);
+
+  // ---- staff dashboard customers (A2) -----------------------------------------------------
+  const v = await newUser('blockme');
+  await addCustomer(v);
+  const CUSTOMERS = '/api/admin/customers';
+  const setStatus = (user, id, value) => postJson(`${CUSTOMERS}/${id}/status`, user, value);
+  r = await call(`${CUSTOMERS}?q=blockme`, { headers: bearer(c.token) });
+  check('customers: customer -> 403', r.status === 403, r);
+  r = await call(`${CUSTOMERS}?q=blockme`, { headers: bearer(s.token) });
+  check('customers: moderator -> 403', r.status === 403, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await call(`${CUSTOMERS}?q=${encodeURIComponent(`blockme-${stamp},(*)`)}`, { headers: bearer(s.token) });
+  check('customers: support finds one account by email; filter characters are dropped',
+    r.status === 200 && r.body?.customers?.length === 1 && r.body.customers[0].id === v.customerId
+    && r.body.customers[0].role === 'customer' && !('dob_ad' in r.body.customers[0]), r);
+
+  r = await setStatus(s, v.customerId, { status: 'blocked' });
+  check('status: no reason -> 400', r.status === 400 && r.body?.error?.code === 'reason_required', r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'test' });
+  check('status: moderator -> 403', r.status === 403, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'Server test block' });
+  check('status: support blocks a customer', r.status === 200 && r.body?.customer?.status === 'blocked', r);
+  const { data: blockAudit } = await admin.from('audit_log').select('actor_user_id, actor_role, reason')
+    .eq('entity_id', v.customerId).eq('action', 'customer.status_changed').order('created_at', { ascending: false }).limit(1).single();
+  check('status: the audit row names the staff member and reason',
+    blockAudit?.actor_user_id === s.id && blockAudit.actor_role === 'support' && blockAudit.reason === 'Server test block', blockAudit);
+  r = await me(bearer(v.token));
+  check('status: the blocked customer gets nothing from the server', r.status === 403 && r.body?.error?.code === 'account_inactive', r);
+  r = await setStatus(s, v.customerId, { status: 'blocked', reason: 'again' });
+  check('status: same status again -> 409', r.status === 409 && r.body?.error?.code === 'unchanged', r);
+  r = await setStatus(s, s.customerId, { status: 'blocked', reason: 'self' });
+  check('status: own account -> 409', r.status === 409 && r.body?.error?.code === 'own_account', r);
+  r = await setStatus(s, f.customerId, { status: 'blocked', reason: 'staff' });
+  check('status: a staff account -> 409', r.status === 409 && r.body?.error?.code === 'staff_account', r);
+  r = await setStatus(s, crypto.randomUUID(), { status: 'blocked', reason: 'nobody' });
+  check('status: unknown customer -> 404', r.status === 404, r);
+  r = await setStatus(s, v.customerId, { status: 'active', reason: 'Server test unblock' });
+  r = await me(bearer(v.token));
+  check('status: support unblocks; the customer is back', r.status === 200, r);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
+
+  // ---- staff dashboard bookings (A4) ------------------------------------------------------
+  const BOOKINGS = '/api/admin/bookings';
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(c.token) });
+  check('bookings: customer -> 403', r.status === 403, r);
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(s.token) });
+  check('bookings: moderator -> 403', r.status === 403, r);
+  r = await call(`${BOOKINGS}?status=everything`, { headers: bearer(f.token) });
+  check('bookings: unknown status -> 400', r.status === 400, r);
+  r = await call(`${BOOKINGS}?from=tomorrow`, { headers: bearer(f.token) });
+  check('bookings: bad date -> 400', r.status === 400, r);
+  await admin.from('users').update({ role: 'support' }).eq('id', s.id);
+  r = await call(`${BOOKINGS}?from=${day}&to=${day}`, { headers: bearer(s.token) });
+  // Earlier sections cancel and replace bookings; any of this suite's on that day will do.
+  const listedBooking = r.body?.bookings?.find((x) => x.practitioner === 'Server Test Jyotish');
+  check('bookings: support sees the day\'s booking with customer, practitioner and payment',
+    r.status === 200 && listedBooking?.customer?.name === 'Server Test'
+    && 'paymentStatus' in listedBooking && !('subject' in listedBooking) && r.body.bookings.every((x) => x.startsAt.slice(0, 10) <= day), listedBooking ?? r);
+  const nextDay = new Date(Date.parse(`${day}T00:00:00+05:45`) + 86400e3).toLocaleDateString('en-CA', { timeZone: 'Asia/Kathmandu' });
+  r = await call(`${BOOKINGS}?from=${nextDay}`, { headers: bearer(s.token) });
+  check('bookings: a later date range leaves it out', r.status === 200 && !r.body.bookings.some((x) => x.id === listedBooking?.id), r.body);
+  r = await call(`${BOOKINGS}?status=${listedBooking?.status}&from=${day}&to=${day}`, { headers: bearer(s.token) });
+  check('bookings: status filter', r.status === 200 && r.body.bookings.length > 0 && r.body.bookings.every((x) => x.status === listedBooking?.status), r.body);
+
+  // ---- booking completion (C2) --------------------------------------------------------
+  // Fail-before: without C2 this route 404s for everyone. `booked` is confirmed and paid;
+  // earlier sections move its times, so set them here.
+  const COMPLETE = `/api/bookings/${booked?.id}/complete`;
+  const moveBooked = (startMin, endMin) => admin.from('bookings').update({
+    scheduled_at: new Date(Date.now() + startMin * 60e3).toISOString(),
+    ends_at: new Date(Date.now() + endMin * 60e3).toISOString(),
+  }).eq('id', booked?.id ?? crypto.randomUUID());
+  await moveBooked(30, 60);
+  r = await call(COMPLETE, { method: 'POST' });
+  check('complete: no token -> 401', r.status === 401, r);
+  r = await postJson(COMPLETE, a, { outcome: 'cancelled' });
+  check('complete: unknown outcome -> 400', r.status === 400, r);
+  r = await postJson(COMPLETE, a, { outcome: 'completed' });
+  check('complete: not ended yet -> 409', r.status === 409 && r.body?.error?.code === 'not_ended', r);
+  await moveBooked(-90, -60);
+  r = await postJson(COMPLETE, c, { outcome: 'completed' });
+  check('complete: the customer -> 404', r.status === 404, r);
+  r = await postJson(COMPLETE, f, { outcome: 'completed' });
+  check('complete: finance -> 404', r.status === 404, r);
+  r = await postJson('/api/bookings/not-a-uuid/complete', a, { outcome: 'completed' });
+  check('complete: bad id -> 404', r.status === 404, r);
+  r = await postJson(COMPLETE, a, { outcome: 'completed' });
+  check('complete: the practitioner completes the ended booking', r.status === 200 && r.body?.booking?.status === 'completed', r);
+  r = await postJson(COMPLETE, a, { outcome: 'no_show' });
+  check('complete: the practitioner cannot re-mark -> 409', r.status === 409 && r.body?.error?.code === 'already_finished', r);
+  r = await postJson(COMPLETE, s, { outcome: 'no_show' });
+  check('complete: support corrects it to no-show', r.status === 200 && r.body?.booking?.status === 'no_show', r);
+  r = await postJson(COMPLETE, s, { outcome: 'completed' });
+  check('complete: and back', r.status === 200 && r.body?.booking?.status === 'completed', r);
+  const { data: completionAudit } = await admin.from('audit_log').select('action, actor_user_id').eq('entity_id', booked?.id ?? crypto.randomUUID()).like('action', 'booking.%');
+  check('complete: every change audited with its actor',
+    completionAudit?.length === 3 && completionAudit.filter((x) => x.actor_user_id === s.id).length === 2 && completionAudit.some((x) => x.actor_user_id === a.id), completionAudit);
+  r = await call('/api/reminders/run', { method: 'POST', headers: bearer(env.CRON_SECRET) });
+  check('reminders: the run reports auto-completions', r.status === 200 && Number.isInteger(r.body?.completed), r.body);
+  await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
 
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).

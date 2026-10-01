@@ -67,8 +67,17 @@ checks live in `database/tests/`.
 
 **Status:** Steps 1–6 done. Phase 1 security hardening done (Checkpoints A–K, see
 below). Step 7 done (7a services catalog, 7b availability and bookings, 7c booking
-endpoint, 7d booking form, 7e practitioner directory). Next: Step 8, payments. The project in `.env` is the **development** database; 0001–0017 are applied
-there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
+endpoint, 7d booking form, 7e practitioner directory). Plan Steps 11–19 and 21 done
+in 0018–0033; each migration's header names its build checkpoint, and the plan step it
+covers is noted under that step below. Question service done (Q1–Q3: 0034, its routes and
+the ask form, below). Step 8 done, with days off
+(E1–E2: 0035 and the practitioner's Days off box, below). Weekly hours editor done
+(H1–H2: 0036 and the practitioner's Weekly hours box, below). Step 20 done
+(A1–A4: the staff dashboard; customers and practitioners, 0037; services and
+settings, 0038; bookings and reviews, 0039; below). Booking completion done
+(C1–C2: 0040 and the Completed / No-show buttons, under Step 10). P1 fixes done (under
+Step 20). The project in `.env` is the **development**
+database; 0001–0040 are applied there and every test in `database/tests/` passes. Nothing from Phase 1 has been applied
 to a production project.
 Apply with `node scripts/db.mjs <file.sql>`; it refuses to run unless `.env` declares
 `SUPABASE_DB_TARGET=development` (production needs `=production` plus `--production`).
@@ -912,9 +921,283 @@ would have returned the rest, identity documents included, to any customer.
 
 ---
 
+### Question service (NPR 100) — through the server and the payment system
+
+The old ask form inserted `question_consultations` from the browser. The row stayed
+`UNPAID`, had no practitioner, and was never picked up. RLS let the customer write the
+answer and let the practitioner mark the row paid. The customer now picks the
+practitioner, and there is no answer deadline yet.
+
+#### Checkpoint Q1 — database — `0034_question_payments.sql` ✅ (applied to development)
+
+**What**
+- `create_question` (server only) takes the practitioner, the price from the `question`
+  service (a practitioner's own row wins) and the commission setting, and opens an
+  `awaiting_payment` payment. Refuses `CUSTOMER_NOT_ACTIVE`, `SELF_BOOKING`,
+  `SERVICE_NOT_BOOKABLE`, and `TOO_MANY_UNPAID` (2 awaiting payment).
+- A payment has exactly one source: `payments.booking_id` or
+  `payments.question_consultation_id` (AD-20).
+- Proof, approval, rejection and refunds handle both kinds:
+  - approval → question `PAID`, `paid_at`, three ledger rows (`booking_id` null), and
+    both people notified;
+  - rejection → `FAILED` / `CLOSED`;
+  - full refund → `REFUNDED`.
+  The reviewer and refund self-checks read the payment's own customer and
+  practitioner. A refund reverses the ledger with the original rows' links and
+  commission.
+- `answer_question` (server only): assigned practitioner only, draft → `IN REVIEW`,
+  final → `ANSWERED`, then locked; the final answer notifies the customer. The old
+  notification trigger is dropped (it would send twice).
+- RLS: the browser can no longer insert or update question rows. A practitioner sees a
+  question only once it is paid; the customer still reads their own.
+- Checks: question 1–2000 characters, answer ≤ 5000, birth snapshot a JSON object
+  ≤ 4 KB. The `Q-000123` number stays the existing identity column.
+- The 2 legacy `UNPAID` rows are untouched (README §3 has the query).
+
+**Test** `database/tests/0034_question_payments_test.sql` fails on 0033 (a customer
+inserts a question with its own answer) and passes on 0034. It covers:
+- server-set price and practitioner;
+- each refusal;
+- one source per payment;
+- self-review refused;
+- approval, ledger and notifications;
+- practitioner and rival visibility;
+- draft, final and locked answers;
+- rejection;
+- full refund and balance;
+- the legacy row unchanged.
+
+All tests 0002–0034 and `npm run test:server` pass.
+
+**Until Q3** (now done) the old ask form's direct insert, and the practitioner panel's
+direct answer, were refused by RLS. That was intended: they were the holes.
+
+**Rollback** Fix forward. Restoring the dropped policies restores the holes.
+
+---
+
+#### Checkpoint Q2 — question endpoints ✅ (running against development)
+
+**What**
+- `POST /api/questions` `{astrologerId, question, subject}`: a signed-in customer asks
+  the chosen practitioner. The question must be 1–2000 characters and the birth details
+  are required. They are checked by `readSubject`, now shared with bookings in
+  `lib/server/subject.js`. Returns the question with its database-set price and
+  `paymentId`. Price, status, owner or answer sent by the browser are ignored.
+  Refusals map to 400 `self`, 403 `account_inactive`, 404 and 409 `too_many_unpaid`.
+- `POST /api/questions/:id/answer` `{answer, final}`: the assigned practitioner saves a
+  draft or the final answer. Anyone else gets 404, the same as a missing id. A closed,
+  unpaid or already-answered question gets 409 `closed`.
+- The payment proof, approve and reject routes serve question payments unchanged. The
+  review queue and the refund queue now include question payments, with `kind`
+  (`booking` | `question`) and a `question` block `{id, number, text, status}`. For a
+  question, `booking` is null.
+- The email sender's `payment_approved` has a question wording ("Question Q-000123 has
+  been sent to the astrologer") instead of reading a booking time that does not exist.
+- Self-review refusal messages now say "a payment you are party to", not "your own
+  booking".
+
+**Test** `npm run test:server` has a questions section (32 checks, 267 total). All 32
+fail against a build without these routes and pass with them. It covers:
+- 401 without a token;
+- 400 for bad input, including missing or impossible birth details;
+- a blocked customer, the practitioner asking themselves, and an unknown practitioner;
+- forged price, status, owner and answer ignored;
+- the direct browser insert refused;
+- the third unpaid question refused;
+- proof upload by the owner only;
+- both queues showing `kind: 'question'`;
+- a moderator unable to approve;
+- approve → `PAID`, reject → `CLOSED`;
+- the practitioner seeing the question only once paid, and a rival never;
+- the browser unable to write the answer;
+- a rival practitioner and the customer refused 404;
+- draft, then final, then locked;
+- the customer reading the answer and notified twice;
+- refund → `REFUNDED`;
+- the approval email attempted.
+
+The service-role key is not in `.next/static` or `public`.
+
+**Rollback** Revert the commit; the database stays on 0034 and the queues simply stop
+listing questions.
+
+---
+
+#### Checkpoint Q3 — the ask form uses the server ✅ (running against development)
+
+**What**
+- `ask-flow.js` rewritten. The steps are details → astrologer → question → preview and
+  terms → `POST /api/questions` → payment proof.
+  - The practitioner list comes from `active_practitioners()`. The price comes from the
+    `question` service; a practitioner's own row wins, as `create_question()` decides.
+  - Removed: the "I've paid" checkbox, the browser-made `ASK-…` id, the direct insert
+    and the `service_requests` fallback.
+  - History shows `Q-000123`, the status (awaiting payment, proof under review, paid,
+    being answered, answered, closed) and the answer once final. A question still
+    awaiting payment has **Pay now**, which reopens the proof panel.
+- The proof panel moved from `booking-flow.js` to `script.js` (`renderPayPanelHtml`,
+  `paySubmitProof`). Each flow registers its render function and target in `PAY_FLOWS`
+  and has its own upload state, since both panels can be on the page at once.
+  `renderPaymentStepHtmlFor` stays for the chat flow.
+- Practitioner panel (`bookings-admin.js`):
+  - lists only questions assigned to this practitioner, so their own questions as a
+    customer stay out;
+  - shows the new birth-details format;
+  - saves through `POST /api/questions/:id/answer`;
+  - makes an answered question read-only.
+- The staff payment and refund queues (`auth-module.js`) show a question's number and
+  text where a booking shows its time.
+- Fixed on the way: the dashboard replaced the details form the moment its last field
+  was typed, before anything was saved. It now requires the saved customer profile.
+- New `aq` strings in all 4 languages, and the step bar now reads Details, Astrologer,
+  Question, Payment, Answer.
+
+**Test** A headless Edge walk runs with throwaway practitioner, customer and finance
+users:
+1. The customer asks through the real form: the practitioner and price come from the
+   database, and the question is created through the route as UNPAID.
+2. The customer uploads a PNG proof, and the payment moves to `proof_submitted`.
+3. The staff queue shows the payment as a question, and finance approves it.
+4. The practitioner's panel shows the question and birth place; the practitioner
+   answers, and the database records ANSWERED, written through the route.
+5. The customer's history shows the answer.
+
+The walk also clicks the buttons a first pass skipped:
+- **Pay now** in the history, for a question saved without paying.
+- The staff queue's **Reject** button: it prompts for a reason, and the question closes as CLOSED / FAILED. It shows as "Closed (payment not verified)" with no Pay now, and as read-only in the practitioner's panel.
+- The practitioner's **Save draft** (IN REVIEW, still editable), then Submit.
+- The refund tab: **Record refund**, then Approve, Process and Complete. The queue row shows the question number and text, and the question ends REFUNDED.
+- The staff queue, practitioner panel and customer screens in ne / hi / sa, with no `undefined`.
+
+This found and fixed two bugs:
+- hi and sa had none of the 21 question-flow strings.
+- A history reload was ignored while an older read was still in flight, so a paid question kept showing Pay now. Superseded reads are now dropped.
+
+Nothing is stored in `localStorage` and there are no page errors. The same walk has 7
+failures on the pre-Q3 browser code. The booking walk (now including its proof
+upload), the chat walk and `npm run test:server` pass.
+
+**Rollback** Revert the commit. The old form's writes are refused by 0034, so the
+question service stops working until Q3 is restored.
+
+---
+
 ### Step 8 — Availability and slot computation
 
-> **Done in Checkpoint 7b** (0014), except `availability_exceptions`.
+> **Done in Checkpoint 7b** (0014); days off (`availability_exceptions`) in E1–E2 (0035).
+
+#### Checkpoint E1 — days off — `0035_availability_exceptions.sql` ✅ (applied to development)
+
+**What**
+- `availability_exceptions` holds whole days a practitioner doesn't work: Kathmandu
+  dates, both ends included, at most a year, with an optional private reason of up to
+  200 characters.
+- It's managed like weekly hours: the practitioner edits their own rows and an admin
+  can edit any; staff can read them. It has no public or customer read.
+- `available_slots()` skips those days, and `create_booking()` only books what it
+  offers, so the server refuses them too.
+- A booking already on a newly blocked day is left alone. Moving or refunding it stays
+  a staff action.
+
+**Test** `database/tests/0035_availability_exceptions_test.sql` fails on 0034 (the
+table does not exist) and passes on 0035. It covers:
+- no slots on the blocked days, and the day after intact;
+- a reversed range refused;
+- visitors, customers and a rival cannot read the rows; a rival cannot add, change or
+  remove them;
+- `create_booking` on a blocked day → `SLOT_UNAVAILABLE`;
+- an earlier booking unchanged;
+- removing the day off brings the slots back.
+
+All tests 0002–0035 pass.
+
+**Rollback** Re-create the 0014 `available_slots()` and drop the table. Nothing else
+depends on it.
+
+#### Checkpoint E2 — the practitioner's Days off box ✅ (running against development)
+
+**What**
+- My Account → Jyotish has a Days off box: from and to dates, a private reason, and
+  the upcoming blocks, each with a Remove button.
+- Writes go straight under the 0035 RLS, like weekly hours. They involve no money or
+  status, so there's no route.
+- A block with live bookings in its days says how many stay booked, and to contact
+  support to move them.
+- The booking form is unchanged: blocked days simply offer no times.
+- Strings in ne / en / hi / sa.
+
+**Test**
+- `npm run test:server`:
+  - the practitioner blocks a day through RLS;
+  - it offers no times, and `POST /api/bookings` for it → 409 `slot_unavailable`;
+  - a customer cannot block it;
+  - removing the block gives the 6 times back.
+- A headless Edge walk:
+  - the practitioner adds a reversed range (refused in the form), then a day off; the
+    row warns about the booking already on it;
+  - the box renders in ne / hi / sa;
+  - the customer's calendar has no time that day and still has the next;
+  - the practitioner removes it, and the customer's calendar has the day again;
+  - no page errors, and nothing new in `localStorage`.
+- The walk has 9 failures on the pre-E2 browser code. The booking, chat and ask walks
+  still pass.
+
+**Rollback** Revert the commit; the days off stored stay in force (remove them in the
+SQL editor if needed).
+
+#### Checkpoint H1 — weekly hours cannot overlap — `0036_availability_no_overlap.sql` ✅ (applied to development)
+
+**What** An exclusion constraint on `availability`: no two **active** windows of one
+practitioner overlap on the same weekday. Touching windows (09:00–12:00, 12:00–15:00)
+and inactive windows are allowed. Without it, overlapping windows made
+`available_slots()` offer staggered, overlapping start times. The booking exclusion
+constraint still prevented double bookings, but the calendar was confusing. This is
+needed before practitioners set hours in the browser (H2). The migration header has
+the query that must return no rows before applying it to a database with hours.
+
+**Test** `database/tests/0036_availability_no_overlap_test.sql` fails on 0035 (an
+overlapping window is accepted) and passes on 0036. It covers:
+- overlaps at the start and end refused;
+- touching windows, another weekday and an inactive window accepted;
+- re-activating an overlapping window refused;
+- rival and customer writes still refused;
+- touching windows give one even 30-minute sequence.
+
+All tests 0002–0036 pass.
+
+**Rollback** `alter table public.availability drop constraint availability_no_overlap;`
+
+#### Checkpoint H2 — the practitioner's Weekly hours box ✅ (running against development)
+
+**What**
+- My Account → Jyotish has a Weekly hours box above Days off:
+  - windows are grouped by weekday (Sunday to Saturday), each with a Remove button;
+  - an add row: weekday, from and to (`<input type="time" step="900">`).
+- Writes go straight under the 0014 RLS, like Days off.
+- Backwards times are refused in the form. Overlaps are refused by 0036, and its error
+  (`23P01`) is shown as a readable message; the rule lives only in the database.
+- Weekday names come from `Intl` in the page language, the same mapping the booking
+  calendar uses, so there are no new weekday strings.
+- The note "Changing hours does not move existing bookings."
+- Strings in ne / en / hi / sa. The README no longer says to use the SQL editor.
+
+**Test** A headless Edge walk:
+- with no hours, the customer's calendar offers nothing;
+- the practitioner adds 09:00–12:00 for all 7 days, plus a touching 12:00–13:00;
+- an overlapping and a backwards window are each refused with their message, and
+  8 rows are stored;
+- the box renders in ne / hi / sa;
+- the customer's calendar offers exactly 09:00…12:30 on that day and 09:00…11:30 the
+  next;
+- the practitioner removes that weekday, and the calendar offers nothing that day while
+  keeping the next;
+- no page errors, and nothing new in `localStorage`.
+
+The walk has 11 failures on the pre-H2 browser code. `npm run test:server` and the
+booking, chat, ask and days-off walks pass.
+
+**Rollback** Revert the commit; the stored hours stay in force.
 
 **What** Keep the `availability` table (weekly recurring rules). Add
 `availability_exceptions` (date-specific blocks/holidays). Add a
@@ -995,9 +1278,56 @@ booking is unchanged.
 **Security** Price and commission snapshots are written by the Edge Function from
 `services.price` and `platform_settings`, never from the request body.
 
+#### Booking completion (C1–C2)
+
+Nothing moved a booking past `confirmed`, so a paid consultation stayed confirmed
+forever and a customer could never review it (0030 requires `completed`). Decided: the
+practitioner marks the outcome after the end, anything still open 24 hours later
+completes itself, and staff can correct it.
+
+> **C1 done** — `0040_booking_completion.sql` ✅ (applied to development).
+> - `complete_booking(booking, actor, outcome)` (service role): `completed` or
+>   `no_show`, by the booking's own practitioner or support/admin/super_admin; the
+>   booking must be confirmed / in_progress, paid, and ended. Staff may switch a
+>   finished booking between the two outcomes. Anyone else -- the customer included --
+>   gets `NOT_FOUND`. Audited as `booking.completed` / `booking.no_show`.
+> - `auto_complete_bookings()` (service role): paid bookings still confirmed /
+>   in_progress 24 hours after their end become completed, audited with no actor and
+>   the reason; a second run changes nothing.
+> - Money is untouched: the ledger is written at approval (0021).
+> - Test `0040_booking_completion_test.sql` fails without the functions and covers the
+>   customer, another practitioner and finance refused, a bad outcome, not ended, not
+>   paid, no review before completion and one after, the practitioner unable to re-mark,
+>   the staff correction, auto-completion (only the stale paid booking, audited, once),
+>   and browsers unable to call either function.
+
+> **C2 done** — no migration.
+> - `POST /api/bookings/:id/complete {outcome}`: any signed-in user; `complete_booking()`
+>   decides. 404 for anyone who is not the practitioner or support/admin/super_admin
+>   (the customer and finance included), 400 for a bad outcome, 409 `not_ended`,
+>   `not_completable`, `already_finished`.
+> - `POST /api/reminders/run` also runs `auto_complete_bookings()` and returns
+>   `{generated, completed}`; no new scheduler.
+> - My Account → requests: on the practitioner's own paid booking that has ended,
+>   **Completed** / **No-show**; their own bookings no longer offer "Rate". The customer
+>   gets "Rate" once it is completed.
+> - Staff dashboard → Bookings: support/admin/super_admin get the same buttons on an
+>   ended paid booking, and the other outcome on a finished one (correction). Finance
+>   stays read only. Strings in ne / en / hi / sa.
+> - Tests: `test-server` -- no token 401, bad outcome 400, not ended 409, customer /
+>   finance / bad id 404, the practitioner completes and cannot re-mark, support
+>   corrects to no-show and back, three audit rows with their actors, the scheduler run
+>   reports `completed`. Walk `complete_ui.mjs`: the practitioner sees the buttons (en,
+>   ne) and completes; the customer rates it; a moderator sees the review in the
+>   dashboard; finance sees no buttons; support marks no-show and corrects it. The walk
+>   fails with the buttons removed.
+
 ---
 
 ### Step 11 — Payments: eSewa QR + proof upload
+
+> **Done in 0018–0019** (build Checkpoints 8a–8b): payment rules, the private
+> `payment-proofs` bucket, `POST /api/payments/:id/proof`.
 
 **What** ALTER the existing `payments` table (do not replace it):
 - Make `astrologer_id` nullable — money goes to the platform, not the practitioner.
@@ -1029,6 +1359,9 @@ proof object from storage → denied.
 
 ### Step 12 — Super Admin verification queue
 
+> **Done in 0018 and 0021** (build Checkpoints 8a, 9b): `approve_payment` /
+> `reject_payment`, `app/api/payments/review-queue`.
+
 **What** Admin UI listing `payments` where `status in ('proof_submitted','under_review')`
 with signed proof URL, customer, jyotish, service, amount, reference, submitted time.
 Edge Functions `approve-payment` and `reject-payment`.
@@ -1055,6 +1388,8 @@ leave a paid payment with no ledger row. Idempotent on payment state.
 
 ### Step 13 — Financial ledger
 
+> **Done in 0020–0022 and 0027** (build Step 9 and its follow-ups).
+
 **What** `ledger_entries`: `id`, `booking_id`, `payment_id`, `astrologer_id`,
 `entry_type` (`platform_gross|platform_commission|jyotish_payable|payout|refund_reversal`),
 `amount`, `currency`, `direction` (`credit|debit`), `reversal_of_entry_id`,
@@ -1076,6 +1411,8 @@ to the jyotish, and amount actually paid are four distinct numbers.
 
 ### Step 14 — Refunds (manual)
 
+> **Done in 0023–0024 and 0032** (build Checkpoints 10a–10b, 16a follow-up).
+
 **What** `refunds`: `id`, `payment_id`, `amount`, `reason`, `status`
 (`requested|approved|processing|completed|rejected`), `refund_method`,
 `external_reference`, `proof_storage_path`, `processed_by`, `processed_at`, `notes`.
@@ -1093,6 +1430,8 @@ enforced by a constraint plus a check in the Edge Function.
 
 ### Step 15 — Jyotish payouts (manual)
 
+> **Done in 0025–0026** (build Checkpoints 11a–11b).
+
 **What** `payouts` with statuses `pending|approved|processing|paid|failed|cancelled`,
 `external_reference`, `processed_by`, `processed_at`. Jyotish requests a payout against
 their `payable` balance; admin records the real transfer; a `payout` ledger entry debits
@@ -1106,6 +1445,8 @@ the number the dashboard displayed.
 ---
 
 ### Step 16 — Notifications and email jobs
+
+> **Done in 0028** (build Checkpoint 12a) plus `app/api/email/drain`.
 
 **What** Reuse `notifications` (add `data jsonb`, rename semantics of `is_read` to
 `read_at` or keep both). Add `notification_preferences` and `email_jobs`
@@ -1122,6 +1463,8 @@ A `send-emails` Edge Function drains the queue, invoked by pg_cron.
 
 ### Step 17 — Reminders
 
+> **Done in 0029** (build Checkpoint 13a).
+
 **What** pg_cron job scheduling 24-hour and 1-hour reminders. A unique
 `(booking_id, reminder_kind)` key makes a double run a no-op.
 
@@ -1130,6 +1473,8 @@ A `send-emails` Edge Function drains the queue, invoked by pg_cron.
 ---
 
 ### Step 18 — Audio / video consultations
+
+> **Join rules done in 0033** (build Checkpoint 17a).
 
 **What** LiveKit. Edge Function `join-consultation`: authenticate → confirm the caller
 is the booking's customer or its jyotish → booking confirmed and payment paid → server
@@ -1148,6 +1493,8 @@ token is ever persisted. LiveKit API secret lives only in Edge Function secrets.
 ---
 
 ### Step 19 — Reviews
+
+> **Done in 0030** (build Checkpoint 14a).
 
 **What** `reviews` with `unique(booking_id)`, rating 1–5, `private_feedback`, `status`.
 Eligibility (customer owns the booking, booking completed, no existing review) enforced
@@ -1169,9 +1516,128 @@ Role-gated per section, with every mutation going through an Edge Function.
 
 **Depends on** Steps 6, 12, 14, 15, 19.
 
+**How it is built** A view on the one site page (`view-admin`, `js/admin-module.js`),
+not a separate `/admin` route, so it shares the site's sign-in and scripts. Staff writes
+go through RLS + guards where the database already decides, and through a Next.js route
+where only the service role may write (AD-21); there are no Edge Functions.
+
+> **A1 done** (no migration). The dashboard shell and the staff queues:
+> - Sections follow the role: everyone on staff sees Overview and Jyotish applications;
+>   finance/admin/super_admin also see Payments, Refunds, Payouts and Audit;
+>   moderator/admin/super_admin see Knowledge moderation. The lists are presentation;
+>   every route and policy enforces them.
+> - `GET /api/admin/overview` returns counts only, and only those the caller's role may
+>   open: pending applications, today's bookings and questions awaiting an answer for
+>   all staff; proofs, open refunds and open payouts for money roles; knowledge awaiting
+>   review for moderation roles. A count card opens its queue.
+> - The queues moved out of My Account unchanged. My Account keeps the personal tabs
+>   (profile, requests, Jyotish, knowledge authoring) and gives staff a "Staff dashboard"
+>   button.
+> - Fixed while moving: the knowledge queue sent `publish`/`reject`, which the moderate
+>   route refuses (`published`/`rejected`), so publishing from the browser never worked;
+>   and it showed `content_type`, which the queue route returns as `contentType`.
+> - Tests: `test-server` overview section (401, customer and practitioner 403, each
+>   staff role gets exactly its counts); a headless walk per role (signed out, customer,
+>   support, moderator, finance, admin: sections, counts against the database, approve
+>   an application, publish knowledge, audit, ne/hi/sa). The walk fails on the code
+>   before A1.
+
+> **A2 done** — `0037_customer_status.sql` ✅ (applied to development).
+> - **Customers** (support, admin, super_admin): `GET /api/admin/customers?q=` searches
+>   by name or email (the account's or the profile's), newest 50, and returns only
+>   name, email, phone, status and role. Staff have no RLS read on `customers`; birth
+>   details stay private.
+> - **Block / unblock**: `POST /api/admin/customers/:id/status {status, reason}` calls
+>   `set_customer_status()` (service role only). It requires support/admin/super_admin
+>   and a reason (≤ 500), and refuses the caller's own row, a staff account's row and
+>   a no-op. The 0008 trigger is still the one place the change is audited; it now
+>   takes the actor and reason from transaction-local settings the function sets, so
+>   the audit row names who blocked and why (before 0037 it had no actor). A blocked
+>   customer gets 403 `account_inactive` from every route (`requireUser`).
+> - **Role change** (admin, super_admin): an RLS update on `users`; the 0006 guard
+>   decides and its message is shown (only a super_admin grants or removes admin roles).
+> - **Practitioners** (moderator, admin, super_admin): active, suspended and inactive
+>   practitioners; suspend (asks a reason, kept in the audit row) and reactivate are the
+>   guarded RLS update the applications queue uses. A suspended practitioner leaves the
+>   directory and offers no slots.
+> - Tests: `0037_customer_status_test.sql` fails on 0036 (no function) and checks the
+>   audit row's actor and reason, every refusal, that the settings don't outlive the
+>   call, and that browsers can neither call it nor change status. `test-server`:
+>   list 403 for customer and moderator, search, block/unblock, 400/403/404/409 cases,
+>   the blocked account refused. The dashboard walk adds: support blocks (reason
+>   prompt; cancelling changes nothing) and unblocks, no buttons on their own row; an
+>   admin changes a role and granting admin is refused; a moderator suspends (gone from
+>   the directory, audited) and reactivates. It fails with the new sections hidden.
+
+> **A3 done** — `0038_admin_guards.sql` ✅ (applied to development).
+> - **Settings guard** (`guard_platform_setting()`, every caller): commission 0–100;
+>   `reservation_minutes` whole 1–1440; join windows and `cancellation_window_hours`
+>   whole 0–1440; `minimum_payout` ≥ 0; `default_currency` `"NPR"` only (the money
+>   tables accept nothing else); eSewa label and ID text of 1–200; `esewa_qr_path` empty
+>   or an http(s) address ≤ 500. Browser callers also may not add, delete, rename or
+>   change `is_public` of a setting -- "admins can manage settings" is `for all`, so an
+>   admin could delete the commission row before 0038.
+> - **Audit**: `setting.updated` (old and new value, key in `metadata`);
+>   `service.created` / `service.updated` with name, mode, duration, price and status,
+>   only when one of them changes. Bookings keep their `price_snapshot`.
+> - **Services** (admin, super_admin): every service, edit price, minutes and status;
+>   the 0013 checks refuse an incomplete active service and the message is shown.
+>   Not built: adding a service. It needs a `consultation_types` row, which nothing can
+>   read from the browser; add services by migration until a new kind is needed.
+> - **Settings** (admin, super_admin): each key with its description, an edit field and
+>   Save; a number setting is sent as a number when it reads as one, otherwise as typed,
+>   and the guard's message is shown.
+> - Tests: `0038_admin_guards_test.sql` fails on 0037 (an admin's commission of "abc"
+>   is accepted); covers 13 bad values, good values and their audit row, add / delete /
+>   rename / `is_public` refused, a moderator writes nothing, the service audit (one row;
+>   a description-only edit writes none), an earlier booking's price, and the service
+>   role held to the value rules. The dashboard walk adds: an admin changes the live-call
+>   price (the booking form's query returns it, audited), price 0 on an active service
+>   and a commission of "abc" are refused with the database's message, a good setting
+>   saves and is audited, and the audit section lists both. It restores the price and
+>   settings, and fails with the new sections hidden.
+
+> **A4 done** — `0039_review_guard.sql` ✅ (applied to development). Step 20 complete.
+> - **Bookings** (support, finance, admin, super_admin), read only:
+>   `GET /api/admin/bookings?status=&from=&to=` (Kathmandu days, `to` inclusive; newest
+>   100). The server joins customer name and email, practitioner and the latest payment
+>   status, because support has no RLS read on customers or payments. Cancelling or
+>   moving a booking stays out; refunds cover money.
+> - **Reviews** (moderator, admin, super_admin): stars, practitioner, private feedback
+>   and status; hide / publish through the RLS update. Hidden reviews leave
+>   `public_reviews` and `practitioner_ratings`.
+> - **Fixed (0039):** "review staff can hide reviews" is a row-level UPDATE, so a
+>   moderator could rewrite a review's rating, feedback or practitioner and move the
+>   public average. `guard_review_update()` lets a JWT caller change only `status`, and
+>   audits every change as `review.status_changed`.
+> - Tests: `0039_review_guard_test.sql` fails on 0038 (a moderator's rating change is
+>   accepted); covers rating / feedback / practitioner refused, hide and publish audited
+>   with the moderator, the customer unable to touch it. `0038_admin_guards_test.sql`
+>   now counts only its own audit rows (the A3 walk's committed rows broke the count).
+>   `test-server`: bookings 403 for customer and moderator, 400 for a bad status or
+>   date, support sees a booking with customer, practitioner and payment, date and
+>   status filters. The dashboard walk adds: a moderator reads the feedback, hides the
+>   review (out of the rating, audited) and publishes it; finance filters bookings by
+>   date and status. It fails with the new sections hidden.
+
 ---
 
+> **P1 fixes** — no migration.
+> - Every browser-side staff update (role, practitioner status, application, service,
+>   setting, review) goes through `staffUpdate()`, which reads back the changed row.
+>   RLS skips a row the caller may not change without raising, so before this a refused
+>   update showed "Done". Now it shows "You do not have permission to change this."
+> - Applications: every staff role reads the queue, but only moderator / admin /
+>   super_admin get Approve / Reject (the 0005 policy).
+> - A practitioner's own bookings in My Account show their name
+>   (`active_practitioners()` leaves out the caller).
+> - Walk `p1_ui.mjs` fails before (no buttons hidden, a false "Done" for a support
+>   approve and a finance review hide, blank name) and passes after; every other walk
+>   still passes.
+
 ### Step 21 — Knowledge foundation (no AI)
+
+> **Done in 0031** (build Step 15).
 
 **What** `knowledge_items` per architecture §46 — `author_id`, `content_type`, `status`,
 `visibility`, `language`. Authoring and moderation only.

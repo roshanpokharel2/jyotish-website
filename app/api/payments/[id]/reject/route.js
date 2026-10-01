@@ -7,11 +7,11 @@ const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Payment not found.'],
   PROOF_NOT_SUBMITTED: [409, 'proof_not_submitted', 'Proof has not been submitted for this payment yet.'],
   PAYMENT_ALREADY_PROCESSED: [409, 'already_processed', 'This payment has already been decided.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot reject a payment for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot reject a payment you are party to.'],
 };
 
 // POST /api/payments/:id/reject   { reason }
-// Cancels the booking (freeing the slot) and marks the payment rejected, in one
+// Cancels the booking (freeing the slot) or closes the question, and marks the payment rejected, in one
 // database transaction (the audit row included). The reason is required.
 export const POST = route(async (request, { params }) => {
   const user = await requireUser(request, { roles: ['finance', 'admin', 'super_admin'] });

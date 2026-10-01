@@ -4,17 +4,17 @@ import { adminClient } from '@/lib/server/supabase';
 
 // Refusals raised by approve_payment() (0018), as the caller sees them.
 // FORBIDDEN is the function's own verdict: the caller passed the role gate but
-// the payment is for their own booking.
+// they are the payment's customer or practitioner.
 const REFUSALS = {
   NOT_FOUND: [404, 'not_found', 'Payment not found.'],
   PROOF_NOT_SUBMITTED: [409, 'proof_not_submitted', 'Proof has not been submitted for this payment yet.'],
   PAYMENT_ALREADY_PROCESSED: [409, 'already_processed', 'This payment has already been decided.'],
   RESERVATION_EXPIRED: [409, 'reservation_expired', 'The hold has lapsed, so this booking can no longer be confirmed.'],
-  FORBIDDEN: [403, 'forbidden', 'You cannot approve a payment for your own booking.'],
+  FORBIDDEN: [403, 'forbidden', 'You cannot approve a payment you are party to.'],
 };
 
 // POST /api/payments/:id/approve
-// Confirms the booking and marks the payment paid, in one database transaction
+// Confirms the booking (or pays the question) and marks the payment paid, in one database transaction
 // (the audit row included). Finance, admin and super_admin only.
 export const POST = route(async (request, { params }) => {
   const user = await requireUser(request, { roles: ['finance', 'admin', 'super_admin'] });

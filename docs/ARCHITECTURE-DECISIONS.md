@@ -265,3 +265,35 @@ function returns exactly the public columns (`active_practitioners()`, 0017). A
 policy is for rows whose every column the reader may see: their own, or staff. A new
 private column is then private by default, and nothing has to be remembered to keep
 it so.
+
+---
+
+## AD-20 — A payment has exactly one source (Checkpoint Q1)
+
+A payment pays for one booking **or** one question
+(`check num_nonnulls(booking_id, question_consultation_id) = 1`, 0034). The payment
+functions branch on the source for its own state change: the booking's hold and status,
+or the question's status. Everything shared reads the payment or the ledger, never a
+join through `bookings`:
+- the reviewer and refund self-checks use `payments.customer_id` / `astrologer_id`;
+- approval writes the ledger from the source's price and commission snapshots;
+- a refund reverses each original ledger row with that row's own links and commission.
+
+A third thing to sell (a course, a shop order) is then a new source column and a new
+branch, not a copy of the payment system.
+
+---
+
+## AD-21 — Staff writes: the database decides where it can (Step 20)
+
+The staff dashboard adds no write path of its own.
+- Where RLS and a guard trigger already decide (practitioner status, services, reviews,
+  settings, roles), the browser writes through RLS as the signed-in staff user. The
+  guard's refusal is the answer, and the same rule holds for every client.
+- Where only the service role may write (customer status, money), a Next.js route
+  checks the caller's role from the database (`requireUser`) and calls the
+  service-role function, which audits.
+
+Hiding a section is presentation only; nothing is safe because a button is missing.
+The overview returns counts the caller's role may open, never rows.
+

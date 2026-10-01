@@ -128,7 +128,7 @@ Nobody can approve their own practitioner application, so use a **second** accou
 (a second browser profile or a private window):
 
 1. Sign up with another email → **My Account** → the Jyotish tab → submit the application.
-2. Signed in as the super admin, **My Account** → the applications tab → **Approve**.
+2. Signed in as the super admin, **My Account** → **Staff dashboard** → Jyotish applications → **Approve**.
    The applicant becomes an active practitioner with the `jyotish` role.
 3. Optional: to make them the default practitioner in the app, copy their id from the
    SQL editor into `NEXT_PUBLIC_DEFAULT_ASTROLOGER_ID` and restart `npm run dev`:
@@ -206,11 +206,23 @@ a duration. Retire one with `status = 'archived'`; services are never deleted.
 customers) through `create_booking()`, which
 takes the time from the practitioner's weekly `availability` and the price from the
 service. Two bookings of one practitioner can never overlap (a database constraint).
-There is no UI for weekly hours yet; add them in the SQL editor, e.g.
-`insert into public.availability (astrologer_id, day_of_week, start_time, end_time) values ('<astrologer id>', 0, '09:00', '12:00');`
-(`day_of_week` 0 = Sunday). The site's booking form offers only practitioners with hours:
-without a row here, "Book" shows no free times. A booking stays `payment_pending` and
+Practitioners set their own weekly hours (Kathmandu time; no two overlapping on one
+day, 0036) and days off (whole dates, 0035) under **My Account → Jyotish**. Days off
+offer no times and the server refuses them; bookings already on a blocked day stay.
+The site's booking form offers only practitioners with hours: without any, "Book" shows
+no free times. A booking stays `payment_pending` and
 lapses after `reservation_minutes` (20) until proof review lands (Step 8).
+
+**Questions** (NPR 100, 0034) are created only by the server (`POST /api/questions`) through
+`create_question()`, which takes the practitioner the customer chose and the price of
+the `question` service. They are paid through the same proof upload and staff review as
+bookings. A practitioner sees a question only once it is paid, and writes the answer
+through the server (`POST /api/questions/:id/answer`, `answer_question()`). The site's ask form walks the customer through
+choosing a practitioner, asking, and uploading the eSewa proof; the practitioner
+answers in the Booked Services view. Questions from the old ask form have no
+practitioner and no payment. Customers may have paid for them outside the system, so
+staff should check them by hand:
+`select id, question_id, customer_name, question_text, created_at from public.question_consultations where payment_id is null and status = 'UNPAID';`
 
 ---
 
@@ -254,6 +266,34 @@ Key guarantees:
 - Files remain under secure bucket policies
 
 This is implemented with policies such as checking `auth.uid() = user_id` and conversation participant membership.
+
+---
+
+### Staff dashboard
+
+Staff open it from **My Account** → **Staff dashboard**. Sections follow the role:
+
+| Section | Roles |
+| --- | --- |
+| Overview (counts), Jyotish applications (read) | moderator, support, finance, admin, super_admin |
+| Jyotish applications: approve / reject | moderator, admin, super_admin |
+| Customers: search, block / unblock with a reason | support, admin, super_admin |
+| Bookings: filter by status and dates | support, finance, admin, super_admin |
+| Bookings: mark an ended booking completed / no-show, or correct it | support, admin, super_admin |
+| Customers: change a role (admin roles: super_admin only) | admin, super_admin |
+| Practitioners: suspend / reactivate | moderator, admin, super_admin |
+| Reviews: hide / publish | moderator, admin, super_admin |
+| Services (price, minutes, status) and Settings | admin, super_admin |
+| Payments, Refunds, Payouts, Audit | finance, admin, super_admin |
+| Knowledge moderation | moderator, admin, super_admin |
+
+Hiding a section is only presentation; the routes and RLS refuse the same people
+(AD-21).
+
+After a paid consultation has ended, its practitioner marks it **Completed** or
+**No-show** in My Account → requests; only then can the customer rate it. Anything
+still open 24 hours after its end is completed by the scheduler run
+(`POST /api/reminders/run`, which also sends reminders).
 
 ---
 
