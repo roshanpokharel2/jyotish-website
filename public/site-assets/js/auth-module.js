@@ -108,6 +108,11 @@ async function signInMain(){
   const { data, error } = await client.auth.signInWithPassword({email,password});
   if(error){ setAuthMessage(error.message, 'error'); renderAuthForm(); return; }
   await applyMainSession(data.session);
+  // Staff (incl. super_admin) land on the staff dashboard, not the customer account view.
+  if(mainAuthUser && typeof goView === 'function'){
+    await loadAccountContext();
+    if(accIsStaff()) goView('admin');
+  }
 }
 
 async function registerMain(){

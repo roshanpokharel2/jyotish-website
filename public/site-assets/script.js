@@ -223,7 +223,7 @@ ne: {
   kindOnlineD:"गुगल मिट/जुम/फोन मार्फत अनलाइन परामर्श।", kindDirectD:"कार्यालयमा प्रत्यक्ष उपस्थित भई परामर्श।",
   chooseOnlineOptionHeading:"अनलाइन परामर्श विधि छनोट गर्नुहोस्",
   optLiveCall:"लाइभ कल", optLiveCallD:"फोन/भिडियो मार्फत प्रत्यक्ष कुराकानी।",
-  optLiveChart:"लाइभ अनलाइन चार्ट", optLiveChartD:"तपाईंको कुण्डली/चार्ट हेर्दै ज्योतिषीसँग छलफल।",
+  optLiveChart:"लाइभ चार्ट पठन", optLiveChartD:"तपाईंको कुण्डली/चार्ट हेर्दै ज्योतिषीसँग छलफल।",
   optLiveQA:"लाइभ प्रश्न–उत्तर", optLiveQAD:"लाइभ च्याटमार्फत प्रत्यक्ष प्रश्नोत्तर।",
   chooseAstrologerHeading:"ज्योतिषी छनोट गर्नुहोस्",
   astrologerMoreNote:"थप ज्योतिषीहरू प्रशासकबाट क्रमशः थपिँदै जानेछन्।",
@@ -534,7 +534,7 @@ en: {
   kindOnlineD:"Online consultation via Google Meet / Zoom / phone.", kindDirectD:"In-person consultation at our office.",
   chooseOnlineOptionHeading:"Choose an Online Consultation Method",
   optLiveCall:"Live Call", optLiveCallD:"Real-time conversation via phone/video.",
-  optLiveChart:"Live Online Chart", optLiveChartD:"Discuss your birth chart with the astrologer live.",
+  optLiveChart:"Live Chart Reading", optLiveChartD:"Discuss your birth chart with the astrologer live.",
   optLiveQA:"Live Question & Answer", optLiveQAD:"Real-time Q&A over live chat.",
   chooseAstrologerHeading:"Choose Astrologer",
   astrologerMoreNote:"More astrologers will be added progressively by the admin.",
@@ -845,7 +845,7 @@ hi: {
   kindOnlineD:"गूगल मीट/ज़ूम/फोन द्वारा ऑनलाइन परामर्श।", kindDirectD:"कार्यालय में प्रत्यक्ष उपस्थित होकर परामर्श।",
   chooseOnlineOptionHeading:"ऑनलाइन परामर्श विधि चुनें",
   optLiveCall:"लाइव कॉल", optLiveCallD:"फोन/वीडियो द्वारा सीधी बातचीत।",
-  optLiveChart:"लाइव ऑनलाइन चार्ट", optLiveChartD:"अपनी कुंडली/चार्ट देखते हुए ज्योतिषी से चर्चा।",
+  optLiveChart:"लाइव चार्ट पठन", optLiveChartD:"अपनी कुंडली/चार्ट देखते हुए ज्योतिषी से चर्चा।",
   optLiveQA:"लाइव प्रश्न–उत्तर", optLiveQAD:"लाइव चैट द्वारा सीधा प्रश्नोत्तर।",
   chooseAstrologerHeading:"ज्योतिषी चुनें",
   astrologerMoreNote:"अधिक ज्योतिषी एडमिन द्वारा क्रमशः जोड़े जाएंगे।",
@@ -1158,7 +1158,7 @@ sa: {
   kindOnlineD:"Google Meet/Zoom/दूरभाषेण अन्तर्जालपरामर्शः।", kindDirectD:"कार्यालये प्रत्यक्षम् उपस्थित्या परामर्शः।",
   chooseOnlineOptionHeading:"अन्तर्जालपरामर्शविधिं चिन्वन्तु",
   optLiveCall:"सजीवः कॉलः", optLiveCallD:"दूरभाष/दृश्येन प्रत्यक्षं सम्भाषणम्।",
-  optLiveChart:"सजीवम् अन्तर्जालचार्टम्", optLiveChartD:"स्वकुण्डली/चार्टं पश्यन् ज्योतिषिणा सह चर्चा।",
+  optLiveChart:"सजीवम् चार्टपठनम्", optLiveChartD:"स्वकुण्डली/चार्टं पश्यन् ज्योतिषिणा सह चर्चा।",
   optLiveQA:"सजीवः प्रश्नोत्तरः", optLiveQAD:"सजीवसंभाषणेन प्रत्यक्षः प्रश्नोत्तरः।",
   chooseAstrologerHeading:"ज्योतिषिणं चिन्वन्तु",
   astrologerMoreNote:"अधिकाः ज्योतिषिणः प्रशासकेन क्रमशः योजिष्यन्ते।",
@@ -1676,7 +1676,7 @@ function renderStatic(){
   document.documentElement.lang = LANG;
   setText('langSelectorLabel', t.langSelectorLabel);
   setText('fabCallLabel', t.fabCallLabel); setText('fabChatLabel', t.fabChatLabel); setText('fabBookLabel', t.fabBookLabel);
-  renderChatWidgetStatic();
+  if(typeof renderChatWidgetStatic === 'function') renderChatWidgetStatic();
   document.getElementById('langNe').classList.toggle('active', LANG==='ne');
   document.getElementById('langEn').classList.toggle('active', LANG==='en');
   document.getElementById('langHi').classList.toggle('active', LANG==='hi');
@@ -1714,7 +1714,8 @@ function renderStatic(){
   }catch(e){ console.warn(e); }
   setText('panchangBS', bsLabel[LANG]+bsStrTop);
   setText('panchangAD', (LANG==='ne'?'ईस्वी: ':'AD: ')+adStr);
-  setText('panchangDay', WEEKDAY_NAMES[LANG][now.getDay()]);
+  // WEEKDAY_NAMES lives in panchanga-muhurta.js, which lean bundles (e.g. /admin) skip.
+  setText('panchangDay', typeof WEEKDAY_NAMES !== 'undefined' ? WEEKDAY_NAMES[LANG][now.getDay()] : '');
   setText('panchangLiveLink', t.liveLinkLabel);
 
   // stats
@@ -1885,7 +1886,7 @@ function renderStatic(){
   setText('lblLocationV', t.lblLocationV); setText('lblFloors', t.lblFloors); setText('lblProblem', t.lblProblem);
   setText('vastuSubmitBtn', t.vastuSubmitBtn);
   fillSelect('vDirection', t.directions); fillSelect('vBuildingType', t.buildingTypes);
-  renderVastuDirectionFields();
+  if(typeof renderVastuDirectionFields === 'function') renderVastuDirectionFields();
   if(typeof loadLatestDailyHoroscope === 'function') loadLatestDailyHoroscope();
     if(typeof renderRashifal === 'function') renderRashifal();
   if(typeof renderVastuPlatform === 'function') renderVastuPlatform();
@@ -1913,10 +1914,10 @@ function renderStatic(){
    <a href="tel:+9779851001890" style="flex:1;text-align:center;text-decoration:none;padding:9px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink-soft);font-size:.66rem;font-weight:600;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.9 21 3 13.1 3 3.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6"/></svg><span>${t.bottomCall}</span></a>
   `;
 
-  renderBooking();
-  renderKundali();
-  renderContactForm();
-  renderBookingsAdmin();
+  if(typeof renderBooking === 'function') renderBooking();
+  if(typeof renderKundali === 'function') renderKundali();
+  if(typeof renderContactForm === 'function') renderContactForm();
+  if(typeof renderBookingsAdmin === 'function') renderBookingsAdmin();
   setText('questionConsultationsTitleEl', t.questionConsultationsTitle);
   setText('questionConsultationsRefreshEl', t.bookingsRefresh);
   if(typeof renderQuestionConsultationsAdmin === 'function') renderQuestionConsultationsAdmin();
@@ -1946,10 +1947,10 @@ function renderStatic(){
   if(dcb) dcb.onclick = (e)=>{ e.preventDefault(); goToBookingWithType('chat'); };
   if(dab) dab.onclick = (e)=>{ e.preventDefault(); goToBookingWithType('ask'); };
 
-  renderCtPicker();
-  updateCtVisibility();
-  if(consultType==='ask') renderAsk();
-  if(consultType==='chat') renderChat();
+  if(typeof renderCtPicker === 'function') renderCtPicker();
+  if(typeof updateCtVisibility === 'function') updateCtVisibility();
+  if(consultType==='ask' && typeof renderAsk === 'function') renderAsk();
+  if(consultType==='chat' && typeof renderChat === 'function') renderChat();
 
   setText('accHeading', demoLoggedIn ? t.myAccTitle : (authTab==='login'?t.authLoginTab:t.authRegisterTab));
   setText('authDemoBannerEl', t.authDemoBanner);
@@ -1967,11 +1968,11 @@ function renderStatic(){
   setText('vcRoomLabelEl', t.vcRoomLabel); setText('vcNoteLabelEl', t.vcNoteLabel); setText('vcSaveBtn', t.vcSaveNote);
   setText('vcPinsHeadingEl', t.vcPinsHeading); setText('vcDownloadBtn', t.vcDownload); setText('vcClearBtn', t.vcClear);
   const vcMsg = document.getElementById('vcNoPlanMsg');
-  if(vcMsg && !vcState.img){ vcMsg.textContent = t.vcUploadFirst; }
-  renderVcPinsList();
-  renderShop();
-  renderClasses();
-  renderPanchangaPage();
+  if(vcMsg && typeof vcState !== 'undefined' && !vcState.img){ vcMsg.textContent = t.vcUploadFirst; }
+  if(typeof renderVcPinsList === 'function') renderVcPinsList();
+  if(typeof renderShop === 'function') renderShop();
+  if(typeof renderClasses === 'function') renderClasses();
+  if(typeof renderPanchangaPage === 'function') renderPanchangaPage();
 }
 
 function contactBlockHtml(t){

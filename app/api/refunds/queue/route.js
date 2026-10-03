@@ -1,18 +1,25 @@
 import { requireUser } from '@/lib/server/auth';
-import { route } from '@/lib/server/http';
+import { HttpError, route } from '@/lib/server/http';
 import { adminClient } from '@/lib/server/supabase';
 
-// GET /api/refunds/queue
+// GET /api/refunds/queue?limit=&offset=
 // Open refunds (requested, approved, processing), oldest first, with the
 // payment, booking or question, and customer they belong to. Finance, admin, super_admin.
+// `limit` (1-100, default 50) + `offset` page the queue; `hasMore` offers more.
 export const GET = route(async (request) => {
   await requireUser(request, { roles: ['finance', 'admin', 'super_admin'] });
+  const params = new URL(request.url).searchParams;
+  const limit = params.has('limit') ? Number(params.get('limit')) : 50;
+  const offset = params.has('offset') ? Number(params.get('offset')) : 0;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new HttpError(400, 'invalid_query', 'Limit must be 1-100.');
+  if (!Number.isInteger(offset) || offset < 0) throw new HttpError(400, 'invalid_query', 'Offset must be >= 0.');
 
   const admin = adminClient();
   const { data: refunds, error: refundsError } = await admin.from('refunds')
     .select('id, amount, currency, status, reason, created_at, payment_id')
     .in('status', ['requested', 'approved', 'processing'])
-    .order('created_at');
+    .order('created_at')
+    .range(offset, offset + limit); // one extra probes hasMore
   if (refundsError) throw refundsError;
 
   // Two steps, not one embed: refunds.payment_id is deliberately not a foreign
@@ -29,8 +36,11 @@ export const GET = route(async (request) => {
     for (const pay of pays ?? []) byId.set(pay.id, pay);
   }
 
+  const hasMore = (refunds ?? []).length > limit;
+  const page = (refunds ?? []).slice(0, limit);
   return {
-    refunds: (refunds ?? []).map((r) => {
+    limit, offset, hasMore,
+    refunds: page.map((r) => {
       const pay = byId.get(r.payment_id);
       const booking = pay?.bookings;
       const question = pay?.question_consultations;

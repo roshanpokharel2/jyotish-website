@@ -1,5 +1,5 @@
 import { requireUser } from '@/lib/server/auth';
-import { route } from '@/lib/server/http';
+import { HttpError, route } from '@/lib/server/http';
 import { adminClient } from '@/lib/server/supabase';
 
 const REVIEWERS = ['finance', 'admin', 'super_admin'];
@@ -7,12 +7,18 @@ const REVIEWERS = ['finance', 'admin', 'super_admin'];
 // payments <-> question_consultations have a link each way; name the one to follow.
 const QUESTION = 'question_consultations!payments_question_consultation_id_fkey(id, question_id, question_text, status, customers(full_name), astrologers(name))';
 
-// GET /api/payments/review-queue
+// GET /api/payments/review-queue?limit=&offset=
 // Payments waiting for review: bookings by consultation time, questions by when
 // the proof came in. Each carries a short-lived signed URL for its proof -- the
 // browser never reads the bucket directly. Finance, admin and super_admin only.
+// `limit` (1-100, default 50) + `offset` page the queue; `hasMore` offers more.
 export const GET = route(async (request) => {
   await requireUser(request, { roles: REVIEWERS });
+  const params = new URL(request.url).searchParams;
+  const limit = params.has('limit') ? Number(params.get('limit')) : 50;
+  const offset = params.has('offset') ? Number(params.get('offset')) : 0;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new HttpError(400, 'invalid_query', 'Limit must be 1-100.');
+  if (!Number.isInteger(offset) || offset < 0) throw new HttpError(400, 'invalid_query', 'Offset must be >= 0.');
 
   const admin = adminClient();
   const { data, error } = await admin.from('payments')
@@ -20,14 +26,17 @@ export const GET = route(async (request) => {
     .eq('status', 'proof_submitted');
   if (error) throw error;
 
-  // Sorted here, not in the query: the queue is tiny and an embedded order is
-  // silently ignored by PostgREST. updated_at moves exactly when the proof is
-  // recorded (0001 trigger).
+  // Sorted here, not in the query: the queue is bounded to unreviewed proofs
+  // and an embedded order is silently ignored by PostgREST. updated_at moves
+  // exactly when the proof is recorded (0001 trigger). Paginate after sorting
+  // so pages keep oldest-first order.
   const when = (pay) => pay.bookings?.scheduled_at ?? pay.updated_at;
   data.sort((a, b) => (when(a) < when(b) ? -1 : 1));
+  const page = data.slice(offset, offset + limit);
+  const hasMore = data.length > offset + limit;
 
   const payments = [];
-  for (const pay of data) {
+  for (const pay of page) {
     const { data: url, error: urlError } = await admin.storage
       .from('payment-proofs').createSignedUrl(pay.proof_storage_path, 3600);
     if (urlError) throw urlError;
@@ -49,5 +58,5 @@ export const GET = route(async (request) => {
       service: { name: booking?.services?.name ?? null },
     });
   }
-  return { payments };
+  return { limit, offset, hasMore, payments };
 });
