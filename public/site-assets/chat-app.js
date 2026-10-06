@@ -55,6 +55,18 @@ function setStatus(message, type = 'info', target = els.statusText) {
 }
 const appError = (error) => setStatus(error?.message || String(error), 'error', els.appStatus);
 
+function toggleChatPassword(){
+  const visible = els.password.type === 'password';
+  const button = $('togglePassword');
+  els.password.type = visible ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(visible));
+  button.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+  button.title = visible ? 'Hide password' : 'Show password';
+  button.innerHTML = visible
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A11 11 0 0 1 12 5c5 0 9 5 9 7a10 10 0 0 1-3.1 4.1M6.2 6.2C3.7 7.8 2 10.4 2 12c0 2 4 7 10 7 1.1 0 2.1-.2 3-.5"/></svg>';
+}
+
 // Calls a server endpoint with the current access token (lib/server/auth.js).
 async function api(path, { method = 'GET', json, form } = {}) {
   const { data: { session } } = await APP.supabase.auth.getSession();

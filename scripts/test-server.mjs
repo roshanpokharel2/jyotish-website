@@ -1078,6 +1078,65 @@ try {
   check('reminders: the run reports auto-completions', r.status === 200 && Number.isInteger(r.body?.completed), r.body);
   await admin.from('users').update({ role: 'moderator' }).eq('id', s.id);
 
+  // ---- password management (auth) -------------------------------------------------------
+  const root = await newUser('superadmin');
+  await admin.from('users').update({ role: 'super_admin' }).eq('id', root.id);
+  const USER_ADMIN = '/api/admin/users';
+  const PASSWORD = `${USER_ADMIN}/${c.id}/password`;
+  r = await call(USER_ADMIN);
+  check('user search: no token -> 401', r.status === 401, r);
+  r = await call(USER_ADMIN, { headers: bearer(c.token) });
+  check('user search: normal user -> 403', r.status === 403, r);
+  r = await call(`${USER_ADMIN}?q=${encodeURIComponent(c.email)}`, { headers: bearer(root.token) });
+  check('user search: super_admin finds the identified account', r.status === 200 && r.body?.users?.some((user) => user.id === c.id && user.email === c.email), r.body);
+  r = await postJson(PASSWORD, c, { password: 'Unauthorized-Password-1!', confirmPassword: 'Unauthorized-Password-1!' });
+  check('password change: normal user -> 403', r.status === 403, r);
+  r = await postJson(PASSWORD, root, { password: 'Mismatch-Password-1!', confirmPassword: 'Mismatch-Password-2!' });
+  check('password change: mismatch -> 400', r.status === 400 && r.body?.error?.code === 'password_mismatch', r);
+  r = await postJson(PASSWORD, root, { password: 'short7!', confirmPassword: 'short7!' });
+  check('password change: below minimum -> 400', r.status === 400 && r.body?.error?.code === 'weak_password', r);
+  const changedPassword = `Admin-${crypto.randomUUID()}!`;
+  r = await postJson(PASSWORD, root, { password: changedPassword, confirmPassword: changedPassword });
+  check('password change: super_admin succeeds and reports audit status', r.status === 200 && r.body?.passwordUpdated && r.body?.auditLogged, r);
+  const { data: passwordAudit } = await admin.from('audit_log').select('actor_user_id,actor_role,new_state')
+    .eq('entity_id', c.id).eq('action', 'user.password_changed');
+  check('password change: audit records actor without credential material', passwordAudit?.length === 1
+    && passwordAudit[0]?.actor_user_id === root.id && passwordAudit[0]?.actor_role === 'super_admin'
+    && passwordAudit[0]?.new_state?.password_changed === true && !('password' in passwordAudit[0].new_state), passwordAudit);
+  const updatedLogin = browser();
+  clients.push(updatedLogin);
+  let { data: updatedSession, error: updatedLoginError } = await updatedLogin.auth.signInWithPassword({ email: c.email, password: changedPassword });
+  check('password change: new password logs in', !updatedLoginError && !!updatedSession.session, updatedLoginError?.message);
+  await updatedLogin.auth.signOut();
+  ({ data: updatedSession, error: updatedLoginError } = await updatedLogin.auth.signInWithPassword({ email: c.email, password: changedPassword }));
+  check('password change: logout and re-login succeeds', !updatedLoginError && !!updatedSession.session, updatedLoginError?.message);
+
+  const { data: recoveryLink, error: recoveryLinkError } = await admin.auth.admin.generateLink({ type: 'recovery', email: c.email });
+  const recoveryToken = recoveryLink?.properties?.hashed_token;
+  check('password reset: a verified recovery token is generated', !recoveryLinkError && !!recoveryToken, recoveryLinkError?.message);
+  if(recoveryToken){
+    const recoveryClient = browser();
+    clients.push(recoveryClient);
+    const { data: recoverySession, error: recoveryError } = await recoveryClient.auth.verifyOtp({ type: 'recovery', token_hash: recoveryToken });
+    check('password reset: verified token establishes recovery session', !recoveryError && !!recoverySession.session, recoveryError?.message);
+    const recoveredPassword = `Recovered-${crypto.randomUUID()}!`;
+    const { error: recoveredUpdateError } = recoveryError ? { error: recoveryError } : await recoveryClient.auth.updateUser({ password: recoveredPassword });
+    check('password reset: recovery session persists new password', !recoveredUpdateError, recoveredUpdateError?.message);
+    const replayClient = browser();
+    clients.push(replayClient);
+    const { error: replayError } = await replayClient.auth.verifyOtp({ type: 'recovery', token_hash: recoveryToken });
+    check('password reset: used token is rejected', !!replayError, replayError?.message);
+    const invalidClient = browser();
+    clients.push(invalidClient);
+    const { error: invalidRecoveryError } = await invalidClient.auth.verifyOtp({ type: 'recovery', token_hash: 'invalid-recovery-token' });
+    check('password reset: invalid token is rejected', !!invalidRecoveryError, invalidRecoveryError?.message);
+    const finalLogin = browser();
+    clients.push(finalLogin);
+    const { data: finalSession, error: finalLoginError } = await finalLogin.auth.signInWithPassword({ email: c.email, password: recoveredPassword });
+    check('password reset: recovered password logs in', !finalLoginError && !!finalSession.session, finalLoginError?.message);
+    if(finalSession.session) c.token = finalSession.session.access_token;
+  }
+
   // ---- /api/me, account changes (destructive for C, so last) -------------------------
   // A role change is seen on the next request (read from the db, not the token).
   await admin.from('users').update({ role: 'support' }).eq('id', c.id);

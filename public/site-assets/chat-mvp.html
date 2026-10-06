@@ -44,6 +44,12 @@
       }
       .auth-shell h1 { margin-top: 0; color: var(--navy); }
       .field { margin-bottom: 14px; }
+      .password-input-wrap { position: relative; }
+      .password-input-wrap input { padding-right: 54px; }
+      .password-toggle { position: absolute; top: 1px; right: 1px; bottom: 1px; width: 44px; height: auto; min-height: 0; padding: 8px; display: flex; align-items: center; justify-content: center; border: 0; border-left: 1px solid var(--line); border-radius: 0 9px 9px 0; background: var(--ivory); color: var(--navy); }
+      .password-toggle:hover { background: #f7f5ef; }
+      .password-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+      .password-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
       label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
       input, select, button {
         width: 100%;
@@ -246,7 +252,10 @@
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+          <div class="password-input-wrap">
+            <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+            <button id="togglePassword" class="password-toggle" type="button" aria-label="Show password" title="Show password" aria-pressed="false" onclick="toggleChatPassword()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </div>
         <button type="submit">Sign in</button>
       </form>

@@ -97,6 +97,7 @@ function admTabMeta(){
     overview: [t.adm.overview, 'What is waiting right now.'],
     applications: [t.jyotishAdmin?.title || 'Applications', 'Pending practitioner verifications.'],
     customers: [t.adm.customers, 'Search, block / unblock with audit reason.'],
+    users: ['User passwords', 'Search accounts and set a new password securely.'],
     bookings: [t.adm.bookings, 'Filter by status and date. Read-only + outcome.'],
     practitioners: [t.adm.practitioners, 'Suspend / reactivate. Audited.'],
     reviews: [t.adm.reviews, 'Hide / publish.'],
@@ -122,6 +123,7 @@ function adminTabs(){
   if(ADMIN_MODERATION.includes(accRole)) tabs.push(['knowledge', t.kn.queue]);
   if(ADMIN_SETUP.includes(accRole)) tabs.push(['services', t.adm.services], ['settings', t.adm.settings]);
   if(ADMIN_MONEY.includes(accRole)) tabs.push(['audit', t.au.title]);
+  if(accRole === 'super_admin') tabs.push(['users', 'User passwords']);
   return tabs;
 }
 
@@ -148,7 +150,7 @@ async function renderAdmin(){
     ['Overview', ['overview']],
     ['Queues', ['applications', 'payments', 'refunds', 'payouts', 'knowledge']],
     ['Operations', ['bookings', 'customers', 'practitioners', 'reviews']],
-    ['System', ['services', 'settings', 'audit']],
+    ['System', ['services', 'settings', 'audit', 'users']],
   ];
   const meta = admTabMeta();
   const [pageTitle, pageDesc] = meta[adminTab] || [labelOf(adminTab), ''];
@@ -171,6 +173,9 @@ async function renderAdmin(){
           <strong class="adm-title">${escapeHtml(pageTitle)}</strong>
           <span class="adm-role">${escapeHtml(accRole || '')}</span>
           <span class="adm-top-actions">
+            <select class="adm-language" aria-label="${escapeHtml(t.langSelectorLabel)}" onchange="setLang(this.value)">
+              ${[['ne','नेपाली'],['en','English'],['hi','हिन्दी'],['sa','संस्कृतम्']].map(([value, label]) => `<option value="${value}"${LANG === value ? ' selected' : ''}>${label}</option>`).join('')}
+            </select>
             <button class="adm-link-btn" onclick="goView('account')">← ${escapeHtml(t.nav?.account || 'My Account')}</button>
           </span>
         </div>
@@ -195,6 +200,7 @@ async function renderAdmin(){
   if(adminTab === 'payouts') return renderPayoutsQueue(body);
   if(adminTab === 'knowledge') return renderKnowledgeQueue(body);
   if(adminTab === 'audit') return renderAuditTab(body);
+  if(adminTab === 'users') return renderAdminUserPasswords(body);
 }
 
 // Counts from the server; only the ones this role may open come back.
@@ -314,6 +320,116 @@ function searchCustomers(){
   renderAdmin();
 }
 function clearCustomerSearch(){ adminCustomerQuery = ''; admCustLimit = ADM_PAGE; renderAdmin(); }
+
+let adminUserQuery = '';
+let adminPasswordUsers = [];
+let adminPasswordTarget = null;
+let adminPasswordMessage = '';
+let admUserLimit = ADM_PAGE;
+
+async function renderAdminUserPasswords(body){
+  body.innerHTML = `
+    <div class="adm-filterbar" role="search">
+      <div class="field" style="flex:1;min-width:220px;"><label for="admUserQ">Search accounts</label>
+      <input id="admUserQ" placeholder="Name, email, or phone" value="${escapeHtml(adminUserQuery)}" onkeydown="if(event.key==='Enter') searchAdminUsers()"></div>
+      <button class="btn btn-gold" onclick="searchAdminUsers()">Search</button>
+      ${adminUserQuery ? `<button class="btn btn-ghost" onclick="clearAdminUserSearch()">Clear</button>` : ''}
+    </div>
+    <div id="admUserList">${admSkeleton(4)}</div>
+    <div id="admUserPasswordForm"></div>`;
+
+  const list = document.getElementById('admUserList');
+  const token = await accToken();
+  let users = [], hasMore = false;
+  try{
+    const response = await fetch(`/api/admin/users?q=${encodeURIComponent(adminUserQuery)}&limit=${admUserLimit}`, { headers:{ Authorization:`Bearer ${token}` } });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.error?.message || T[LANG].loadFailed);
+    users = result.users ?? [];
+    hasMore = !!result.hasMore;
+  } catch(err){
+    list.innerHTML = admError(err.message, 'renderAdmin');
+    return;
+  }
+  adminPasswordUsers = users;
+  if(!users.length){
+    list.innerHTML = admEmpty('No accounts found.', adminUserQuery ? 'Try another name, email, or phone.' : 'Search for an account to change its password.');
+  } else {
+    list.innerHTML = `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th style="text-align:right;">Action</th></tr></thead><tbody>` +
+      users.map(user => `<tr>
+        <td><b>${escapeHtml(user.fullName || '—')}</b></td>
+        <td>${escapeHtml(user.email || '—')}</td>
+        <td>${escapeHtml(user.role || '—')}</td>
+        <td>${escapeHtml(user.phone || '—')}</td>
+        <td><span class="adm-actions"><button class="btn btn-ghost" onclick="selectAdminPasswordTarget('${escapeHtml(user.id)}')">Select</button></span></td>
+      </tr>`).join('') + `</tbody></table></div>` + admShowMore(users.length, hasMore, 'moreAdminUsers');
+  }
+  renderAdminPasswordForm(document.getElementById('admUserPasswordForm'));
+}
+
+function renderAdminPasswordForm(form){
+  if(!form) return;
+  if(!adminPasswordTarget){ form.innerHTML = ''; return; }
+  form.innerHTML = `
+    <section class="adm-card" style="margin-top:16px;">
+      <h4 style="margin:0 0 8px;">Change password</h4>
+      <div class="review-row"><span>Account</span><b>${escapeHtml(adminPasswordTarget.fullName || '—')} · ${escapeHtml(adminPasswordTarget.email || adminPasswordTarget.id)}</b></div>
+      <div class="review-row"><span>Role</span><b>${escapeHtml(adminPasswordTarget.role || '—')}</b></div>
+      <div class="field" style="margin-top:12px;"><label for="admNewPassword">New password</label>${passwordFieldMarkup('admNewPassword','new-password')}</div>
+      <div class="field" style="margin-top:12px;"><label for="admConfirmPassword">Confirm new password</label>${passwordFieldMarkup('admConfirmPassword','new-password')}</div>
+      <button class="btn btn-gold" style="margin-top:14px;" onclick="submitAdminPasswordChange()">Update password</button>
+      ${adminPasswordMessage ? `<div class="disclaimer-box" data-auth-type="${adminPasswordMessage.startsWith('Password updated successfully') ? 'success' : 'error'}" style="margin-top:14px;">${escapeHtml(adminPasswordMessage)}</div>` : ''}
+    </section>`;
+}
+
+function selectAdminPasswordTarget(userId){
+  adminPasswordTarget = adminPasswordUsers.find(user => user.id === userId) || null;
+  adminPasswordMessage = '';
+  renderAdmin();
+}
+
+function searchAdminUsers(){
+  adminUserQuery = document.getElementById('admUserQ')?.value.trim() || '';
+  adminPasswordTarget = null;
+  adminPasswordMessage = '';
+  admUserLimit = ADM_PAGE;
+  renderAdmin();
+}
+
+function clearAdminUserSearch(){
+  adminUserQuery = '';
+  adminPasswordTarget = null;
+  adminPasswordMessage = '';
+  admUserLimit = ADM_PAGE;
+  renderAdmin();
+}
+
+function moreAdminUsers(){ admUserLimit += ADM_PAGE; renderAdmin(); }
+
+async function submitAdminPasswordChange(){
+  if(!adminPasswordTarget) return;
+  const password = document.getElementById('admNewPassword')?.value;
+  const confirmPassword = document.getElementById('admConfirmPassword')?.value;
+  if(!password || !confirmPassword) adminPasswordMessage = 'New password and confirmation are required.';
+  else if(password !== confirmPassword) adminPasswordMessage = 'Passwords do not match.';
+  else if(password.length < 8) adminPasswordMessage = 'Password must contain at least 8 characters.';
+  else {
+    const token = await accToken();
+    try{
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(adminPasswordTarget.id)}/password`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body:JSON.stringify({ password, confirmPassword })
+      });
+      const result = await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(result.error?.message || T[LANG].loadFailed);
+      adminPasswordMessage = result.auditLogged
+        ? `Password updated successfully for ${adminPasswordTarget.email || 'this account'}.`
+        : 'Password updated successfully, but audit logging failed. Notify the system administrator.';
+    } catch(err){ adminPasswordMessage = err.message; }
+  }
+  renderAdmin();
+}
 
 async function setCustomerStatus(id, status){
   const t = T[LANG].adm;

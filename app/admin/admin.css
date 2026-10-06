@@ -32,6 +32,7 @@
 .adm-role{font-size:.7rem; font-weight:700; background:var(--adm-muted); border:1px solid var(--adm-border); border-radius:999px; padding:3px 10px; color:var(--adm-primary);}
 .adm-top-actions{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;}
 .adm-link-btn{background:none; border:1px solid var(--adm-border); border-radius:8px; padding:7px 12px; font-size:.78rem; font-weight:600; color:var(--adm-primary); cursor:pointer; min-height:0;}
+.adm-language{min-height:0; padding:7px 10px; border:1px solid var(--adm-border); border-radius:8px; background:var(--adm-surface); color:var(--adm-primary); font:600 .78rem var(--sans); cursor:pointer;}
 .adm-content{padding:20px 24px 32px; background:var(--adm-bg); flex:1; min-height:0;}
 .adm-page-head{display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; flex-wrap:wrap;}
 .adm-page-head h3{margin:0; font-size:1.15rem;}

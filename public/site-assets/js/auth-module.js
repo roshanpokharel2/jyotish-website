@@ -7,6 +7,7 @@ let mainSupabase = null;
 let mainAuthUser = null;
 let mainCustomer = null;
 let mainAuthMessage = '';
+let mainAuthRecovery = false;
 
 function supabaseConfigReady(){
   const config = window.APP_CONFIG || {};
@@ -26,6 +27,27 @@ function setAuthMessage(message, type='info'){
   mainAuthMessage = message ? `<div class="disclaimer-box" data-auth-type="${escapeHtml(type)}" style="margin-top:14px;">${escapeHtml(message)}</div>` : '';
 }
 
+function passwordEyeIcon(visible=false){
+  return visible
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A11 11 0 0 1 12 5c5 0 9 5 9 7a10 10 0 0 1-3.1 4.1M6.2 6.2C3.7 7.8 2 10.4 2 12c0 2 4 7 10 7 1.1 0 2.1-.2 3-.5"/></svg>';
+}
+
+function passwordFieldMarkup(id, autocomplete){
+  return `<div class="password-input-wrap"><input type="password" id="${escapeHtml(id)}" autocomplete="${escapeHtml(autocomplete)}"><button class="password-toggle" type="button" aria-label="Show password" title="Show password" aria-pressed="false" onclick="togglePasswordVisibility('${escapeHtml(id)}',this)">${passwordEyeIcon()}</button></div>`;
+}
+
+function togglePasswordVisibility(inputId, button){
+  const input = document.getElementById(inputId);
+  if(!input || !button) return;
+  const visible = input.type === 'password';
+  input.type = visible ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(visible));
+  button.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+  button.title = visible ? 'Hide password' : 'Show password';
+  button.innerHTML = passwordEyeIcon(visible);
+}
+
 function setAuthTab(tab){
   authTab = tab;
   renderAuthForm();
@@ -43,10 +65,19 @@ function renderAuthForm(){
     return;
   }
   const message = mainAuthMessage;
+  if(mainAuthRecovery){
+    panel.innerHTML = `
+      <div class="field"><label>${t.authPasswordLabel}</label>${passwordFieldMarkup('authResetPw','new-password')}</div>
+      <div class="field" style="margin-top:12px;"><label>${t.authConfirmLabel}</label>${passwordFieldMarkup('authResetPw2','new-password')}</div>
+      <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="saveRecoveredPassword()">Update Password</button>
+      ${message}
+      <p style="text-align:center;margin-top:14px;font-size:.85rem;"><a href="#" onclick="cancelPasswordRecovery();return false;">${t.authSwitchToLogin}</a></p>`;
+    return;
+  }
   if(authTab==='login'){
     panel.innerHTML = `
       <div class="field"><label>${t.authEmailLabel}</label><input type="email" id="authLoginEmail" autocomplete="email"></div>
-      <div class="field" style="margin-top:12px;"><label>${t.authPasswordLabel}</label><input type="password" id="authLoginPw" autocomplete="current-password"></div>
+      <div class="field" style="margin-top:12px;"><label>${t.authPasswordLabel}</label>${passwordFieldMarkup('authLoginPw','current-password')}</div>
       <div style="text-align:right;margin-top:6px;"><a href="#" style="font-size:.8rem;color:var(--gold);" onclick="resetAuthPassword();return false;">${t.authForgotLink}</a></div>
       <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="signInMain()">${t.authLoginSubmit}</button>
       ${message}
@@ -56,8 +87,8 @@ function renderAuthForm(){
       <div class="field"><label>${t.authFullName}</label><input type="text" id="authRegName" autocomplete="name"></div>
       <div class="field" style="margin-top:12px;"><label>${t.authPhoneLabel}</label><input type="tel" id="authRegPhone" autocomplete="tel"></div>
       <div class="field" style="margin-top:12px;"><label>${t.authEmailLabel}</label><input type="email" id="authRegEmail" autocomplete="email"></div>
-      <div class="field" style="margin-top:12px;"><label>${t.authPasswordLabel}</label><input type="password" id="authRegPw" autocomplete="new-password"></div>
-      <div class="field" style="margin-top:12px;"><label>${t.authConfirmLabel}</label><input type="password" id="authRegPw2" autocomplete="new-password"></div>
+      <div class="field" style="margin-top:12px;"><label>${t.authPasswordLabel}</label>${passwordFieldMarkup('authRegPw','new-password')}</div>
+      <div class="field" style="margin-top:12px;"><label>${t.authConfirmLabel}</label>${passwordFieldMarkup('authRegPw2','new-password')}</div>
       <div class="field" style="margin-top:12px;"><label>${t.authPrefLangLabel}</label><select id="authRegLang"><option value="ne">नेपाली</option><option value="en">English</option><option value="hi">हिन्दी</option><option value="sa">संस्कृतम्</option></select></div>
       <button class="btn btn-gold btn-block" style="margin-top:16px;" onclick="registerMain()">${t.authRegisterSubmit}</button>
       ${message}
@@ -108,10 +139,14 @@ async function signInMain(){
   const { data, error } = await client.auth.signInWithPassword({email,password});
   if(error){ setAuthMessage(error.message, 'error'); renderAuthForm(); return; }
   await applyMainSession(data.session);
-  // Staff (incl. super_admin) land on the staff dashboard, not the customer account view.
+  // Administrators use the dedicated admin route; other staff use the in-page dashboard.
   if(mainAuthUser && typeof goView === 'function'){
     await loadAccountContext();
-    if(accIsStaff()) goView('admin');
+    if(['admin','super_admin','superadmin'].includes(accRole)){
+      window.location.assign('/admin');
+    } else if(accIsStaff()){
+      goView('admin');
+    }
   }
 }
 
@@ -139,8 +174,52 @@ async function resetAuthPassword(){
   const client = getMainSupabase();
   const email = document.getElementById('authLoginEmail')?.value.trim();
   if(!client || !email){ setAuthMessage('Enter your email first.', 'error'); renderAuthForm(); return; }
-  const { error } = await client.auth.resetPasswordForEmail(email, {redirectTo:window.location.href});
+  const { error } = await client.auth.resetPasswordForEmail(email, {redirectTo:`${window.location.origin}${window.location.pathname}`});
   setAuthMessage(error ? error.message : 'Password reset email sent.', error ? 'error' : 'success');
+  renderAuthForm();
+}
+
+async function saveRecoveredPassword(){
+  const client = getMainSupabase();
+  const password = document.getElementById('authResetPw')?.value;
+  const confirm = document.getElementById('authResetPw2')?.value;
+  if(!password || !confirm){ setAuthMessage(T[LANG].validationRequired, 'error'); renderAuthForm(); return; }
+  if(password !== confirm){ setAuthMessage('Passwords do not match.', 'error'); renderAuthForm(); return; }
+  if(password.length < 8){ setAuthMessage('Password must contain at least 8 characters.', 'error'); renderAuthForm(); return; }
+  const { data:{session} } = await client.auth.getSession();
+  if(!session){
+    mainAuthRecovery = false;
+    setAuthMessage('This password reset link is invalid, expired, or already used. Request a new link.', 'error');
+    clearAuthCallbackParams();
+    renderAuthForm();
+    return;
+  }
+  const { error } = await client.auth.updateUser({password});
+  if(error){ setAuthMessage(error.message, 'error'); renderAuthForm(); return; }
+  try{ sessionStorage.setItem('authPasswordUpdated','1'); } catch {}
+  mainAuthRecovery = false;
+  clearAuthCallbackParams();
+  const { error:signOutError } = await client.auth.signOut();
+  if(signOutError){
+    setAuthMessage('Password updated successfully. Sign out before logging in with the new password.', 'success');
+    if(typeof showToast === 'function') showToast('Password updated successfully.');
+    return;
+  }
+  window.location.reload();
+}
+
+function clearAuthCallbackParams(){
+  const url = new URL(window.location.href);
+  ['code','type','error','error_code','error_description','token_hash'].forEach(key => url.searchParams.delete(key));
+  if(url.hash.includes('access_token=') || url.hash.includes('refresh_token=') || url.hash.includes('type=recovery') || url.hash.includes('error=')) url.hash = '';
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
+function cancelPasswordRecovery(){
+  mainAuthRecovery = false;
+  clearAuthCallbackParams();
+  setAuthMessage('', 'info');
+  authTab = 'login';
   renderAuthForm();
 }
 
@@ -153,14 +232,62 @@ async function applyMainSession(session){
   if(mainAuthUser) await syncMainCustomer(mainAuthUser);
   mainAuthMessage = '';
   renderStatic();
+  if(mainAuthRecovery){
+    const authBlock = document.getElementById('accAuthBlock');
+    const accountBlock = document.getElementById('accMyAccountBlock');
+    if(authBlock) authBlock.style.display = 'block';
+    if(accountBlock) accountBlock.style.display = 'none';
+    renderAuthForm();
+  }
 }
 
 async function initMainAuth(){
   const client = getMainSupabase();
   if(!client) return;
+  client.auth.onAuthStateChange((event, nextSession)=>{
+    if(event === 'PASSWORD_RECOVERY'){
+      mainAuthRecovery = true;
+      setAuthMessage('', 'info');
+    }
+    applyMainSession(nextSession);
+  });
   const {data:{session}} = await client.auth.getSession();
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(url.hash.slice(1));
+  const authError = url.searchParams.get('error_description') || hashParams.get('error_description') || url.searchParams.get('error');
+  const recoveryRequested = url.searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
+  let callbackMessage = '';
+  if(authError){
+    callbackMessage = 'This password reset link is invalid or expired. Request a new link.';
+    authTab = 'login';
+    clearAuthCallbackParams();
+  } else if(recoveryRequested && (!session || !mainAuthRecovery)){
+    callbackMessage = 'This password reset link is invalid, expired, or already used. Request a new link.';
+    clearAuthCallbackParams();
+  } else if(recoveryRequested){
+    clearAuthCallbackParams();
+  }
+  let passwordUpdated = false;
+  try{
+    if(sessionStorage.getItem('authPasswordUpdated')){
+      sessionStorage.removeItem('authPasswordUpdated');
+      passwordUpdated = true;
+    }
+  } catch {}
   await applyMainSession(session);
-  client.auth.onAuthStateChange((_event, nextSession)=>{ applyMainSession(nextSession); });
+  if(passwordUpdated){
+    mainAuthRecovery = false;
+    authTab = 'login';
+    setAuthMessage('Password updated successfully. Sign in with your new password.', 'success');
+    renderAuthForm();
+  } else if(callbackMessage){
+    setAuthMessage(callbackMessage, 'error');
+    if(mainAuthUser && typeof showToast === 'function') showToast(callbackMessage);
+    else renderAuthForm();
+  } else if(recoveryRequested && session){
+    mainAuthRecovery = true;
+    renderAuthForm();
+  }
 }
 
 async function demoLogout(){
